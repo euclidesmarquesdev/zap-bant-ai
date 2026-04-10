@@ -1,0 +1,5 @@
+{
+  "name": "WhatsApp AI BANT Agent",
+  "description": "Sistema de agentes de atendimento com IA para WhatsApp usando metodologia BANT, dashboard em tempo real e integração com Firebase.",
+  "requestFramePermissions": []
+}

@@ -1,0 +1,83 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Informações do usuário do sistema (atendente)",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "agent"] }
+      },
+      "required": ["uid", "email"]
+    },
+    "Lead": {
+      "title": "Lead",
+      "description": "Informações do cliente vindo do WhatsApp",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "phone": { "type": "string" },
+        "status": { "type": "string", "enum": ["novo", "atendido", "negociacao", "fechamento", "pagamento", "humano"] },
+        "score": { "type": "number" },
+        "bant": {
+          "type": "object",
+          "properties": {
+            "budget": { "type": "boolean" },
+            "authority": { "type": "boolean" },
+            "need": { "type": "boolean" },
+            "timeline": { "type": "boolean" }
+          }
+        },
+        "lastMessage": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "phone", "status"]
+    },
+    "Message": {
+      "title": "Message",
+      "description": "Mensagens trocadas no WhatsApp",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "leadId": { "type": "string" },
+        "text": { "type": "string" },
+        "sender": { "type": "string", "enum": ["lead", "ai", "human"] },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["leadId", "text", "sender", "timestamp"]
+    },
+    "AgentModel": {
+      "title": "AgentModel",
+      "description": "Configurações de modelos de agentes",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "isActive": { "type": "boolean" }
+      },
+      "required": ["id", "name"]
+    }
+  },
+  "firestore": {
+    "/users/{uid}": {
+      "schema": "User",
+      "description": "Coleção de usuários do sistema"
+    },
+    "/leads/{leadId}": {
+      "schema": "Lead",
+      "description": "Coleção de leads qualificados"
+    },
+    "/leads/{leadId}/messages/{messageId}": {
+      "schema": "Message",
+      "description": "Subcoleção de mensagens por lead"
+    },
+    "/agents/{agentId}": {
+      "schema": "AgentModel",
+      "description": "Coleção de modelos de agentes configuráveis"
+    }
+  }
+}
