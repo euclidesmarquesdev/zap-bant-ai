@@ -1,9 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, doc, updateDoc, serverTimestamp, addDoc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { StatusBadge } from './Dashboard';
 import { motion } from 'motion/react';
 import { MoreVertical, Phone, Star } from 'lucide-react';
+import { formatPhoneNumber } from '../lib/utils';
+import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
+import { toast } from 'sonner';
 
 const COLUMNS = [
   { id: 'novo', title: 'Novo Atendimento' },
@@ -24,6 +27,56 @@ export default function Kanban() {
     return () => unsubscribe();
   }, []);
 
+  const onDragEnd = async (result: any) => {
+    const { destination, source, draggableId } = result;
+
+    if (!destination) return;
+    if (destination.droppableId === source.droppableId && destination.index === source.index) return;
+
+    const newStatus = destination.droppableId;
+
+    try {
+      const leadRef = doc(db, 'leads', draggableId);
+      const leadSnap = await getDoc(leadRef);
+      const leadData = leadSnap.data();
+
+      const updateData: any = {
+        status: newStatus,
+        updatedAt: serverTimestamp()
+      };
+
+      // Se estiver movendo para atendido, envia mensagem de retomada
+      if (newStatus === 'atendido') {
+        const resumeMessage = "Olá! Estou retomando seu atendimento agora. Como posso te ajudar?";
+        
+        await addDoc(collection(db, 'leads', draggableId, 'messages'), {
+          text: resumeMessage,
+          sender: 'ai',
+          timestamp: serverTimestamp()
+        });
+
+        const targetTo = leadData?.chatId || draggableId;
+        try {
+          await fetch('/api/whatsapp/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ to: targetTo, message: resumeMessage })
+          });
+        } catch (err) {
+          console.error('Error sending resume message from Kanban:', err);
+        }
+        
+        updateData.lastMessage = resumeMessage;
+      }
+
+      await updateDoc(leadRef, updateData);
+      toast.success(`Lead movido para ${COLUMNS.find(c => c.id === newStatus)?.title}`);
+    } catch (error) {
+      console.error('Error updating lead status:', error);
+      toast.error('Erro ao mover lead');
+    }
+  };
+
   return (
     <div className="h-full flex flex-col gap-6">
       <div>
@@ -31,53 +84,84 @@ export default function Kanban() {
         <p className="text-slate-500">Acompanhe a jornada dos seus leads através do funil BANT.</p>
       </div>
 
-      <div className="flex-1 flex gap-6 overflow-x-auto pb-6">
-        {COLUMNS.map((column) => (
-          <div key={column.id} className="flex-shrink-0 w-80 flex flex-col gap-4">
-            <div className="flex items-center justify-between px-2">
-              <div className="flex items-center gap-2">
-                <h3 className="font-bold text-slate-700">{column.title}</h3>
-                <span className="bg-slate-200 text-slate-600 text-xs px-2 py-0.5 rounded-full font-bold">
-                  {leads.filter(l => l.status === column.id).length}
-                </span>
+      <DragDropContext onDragEnd={onDragEnd}>
+        <div className="flex-1 flex gap-6 overflow-x-auto pb-6">
+          {COLUMNS.map((column) => (
+            <div key={column.id} className="flex-shrink-0 w-80 flex flex-col gap-4">
+              <div className="flex items-center justify-between px-2">
+                <div className="flex items-center gap-2">
+                  <h3 className="font-bold text-slate-700">{column.title}</h3>
+                  <span className="bg-slate-200 text-slate-600 text-xs px-2 py-0.5 rounded-full font-bold">
+                    {leads.filter(l => l.status === column.id).length}
+                  </span>
+                </div>
+                <button className="text-slate-400 hover:text-slate-600">
+                  <MoreVertical className="w-5 h-5" />
+                </button>
               </div>
-              <button className="text-slate-400 hover:text-slate-600">
-                <MoreVertical className="w-5 h-5" />
-              </button>
-            </div>
 
-            <div className="flex-1 bg-slate-100/50 rounded-2xl p-3 space-y-3 min-h-[500px]">
-              {leads
-                .filter(l => l.status === column.id)
-                .map((lead) => (
-                  <div key={lead.id}>
-                    <KanbanCard lead={lead} />
+              <Droppable droppableId={column.id}>
+                {(provided, snapshot) => (
+                  <div 
+                    {...provided.droppableProps}
+                    ref={provided.innerRef}
+                    className={`flex-1 rounded-2xl p-3 space-y-3 min-h-[500px] transition-colors ${
+                      snapshot.isDraggingOver ? 'bg-blue-50/50' : 'bg-slate-100/50'
+                    }`}
+                  >
+                    {leads
+                      .filter(l => l.status === column.id)
+                      .map((lead, index) => {
+                        const DraggableAny = Draggable as any;
+                        return (
+                          <DraggableAny key={lead.id} draggableId={lead.id} index={index}>
+                            {(provided: any, snapshot: any) => (
+                              <div
+                                ref={provided.innerRef}
+                                {...provided.draggableProps}
+                                {...provided.dragHandleProps}
+                                className={snapshot.isDragging ? 'z-50' : ''}
+                              >
+                                <KanbanCard lead={lead} isDragging={snapshot.isDragging} />
+                              </div>
+                            )}
+                          </DraggableAny>
+                        );
+                      })}
+                    {provided.placeholder}
                   </div>
-                ))}
+                )}
+              </Droppable>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      </DragDropContext>
     </div>
   );
 }
 
-function KanbanCard({ lead }: { lead: any }) {
+function KanbanCard({ lead, isDragging }: { lead: any, isDragging?: boolean }) {
   return (
     <motion.div 
       layoutId={lead.id}
-      className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 hover:border-blue-300 transition-all cursor-grab active:cursor-grabbing"
+      className={`bg-white p-4 rounded-xl shadow-sm border transition-all cursor-grab active:cursor-grabbing ${
+        isDragging ? 'border-blue-500 shadow-lg scale-105' : 'border-slate-200 hover:border-blue-300'
+      }`}
     >
       <div className="flex justify-between items-start mb-3">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center text-xs font-bold">
-            {lead.name[0]}
+          <div className="w-8 h-8 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center text-xs font-bold overflow-hidden border border-slate-100">
+            {lead.photoUrl ? (
+              <img src={lead.photoUrl} alt={lead.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+            ) : (
+              lead.name ? lead.name[0] : '?'
+            )}
           </div>
           <div>
             <p className="text-sm font-bold text-slate-900 truncate max-w-[140px]">{lead.name}</p>
             <div className="flex items-center gap-1 text-[10px] text-slate-400">
               <Phone className="w-3 h-3" />
-              {lead.phone}
+              {formatPhoneNumber(lead.phone || lead.id) || lead.phone || lead.id}
             </div>
           </div>
         </div>

@@ -5,9 +5,20 @@ import { motion } from 'motion/react';
 interface WhatsAppConnectorProps {
   qrCode: string;
   isReady: boolean;
+  onDisconnect: () => Promise<boolean>;
 }
 
-export default function WhatsAppConnector({ qrCode, isReady }: WhatsAppConnectorProps) {
+export default function WhatsAppConnector({ qrCode, isReady, onDisconnect }: WhatsAppConnectorProps) {
+  const [isDisconnecting, setIsDisconnecting] = React.useState(false);
+  const [showConfirm, setShowConfirm] = React.useState(false);
+
+  const handleDisconnect = async () => {
+    setIsDisconnecting(true);
+    await onDisconnect();
+    setIsDisconnecting(false);
+    setShowConfirm(false);
+  };
+
   return (
     <div className="max-w-2xl mx-auto py-12">
       <div className="text-center mb-12">
@@ -27,9 +38,41 @@ export default function WhatsAppConnector({ qrCode, isReady }: WhatsAppConnector
             </div>
             <h3 className="text-2xl font-bold text-slate-900">Conectado com Sucesso!</h3>
             <p className="text-slate-500 mt-2">Seu agente de IA já está respondendo mensagens.</p>
-            <button className="mt-8 px-8 py-3 bg-red-50 text-red-600 font-bold rounded-xl hover:bg-red-100 transition-all">
-              Desconectar Dispositivo
-            </button>
+            
+            {!showConfirm ? (
+              <button 
+                onClick={() => setShowConfirm(true)}
+                className="mt-8 px-8 py-3 bg-red-50 text-red-600 font-bold rounded-xl hover:bg-red-100 transition-all"
+              >
+                Desconectar Dispositivo
+              </button>
+            ) : (
+              <motion.div 
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="mt-8 p-6 bg-red-50 rounded-2xl border border-red-100 w-full max-w-sm"
+              >
+                <p className="text-red-900 font-bold mb-4">Tem certeza?</p>
+                <p className="text-red-700 text-sm mb-6">Você precisará escanear o QR Code novamente para reconectar.</p>
+                <div className="flex gap-3">
+                  <button 
+                    onClick={handleDisconnect}
+                    disabled={isDisconnecting}
+                    className="flex-1 px-4 py-2 bg-red-600 text-white font-bold rounded-lg hover:bg-red-700 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    {isDisconnecting && <Loader2 className="w-4 h-4 animate-spin" />}
+                    {isDisconnecting ? 'Desconectando...' : 'Sim, Desconectar'}
+                  </button>
+                  <button 
+                    onClick={() => setShowConfirm(false)}
+                    disabled={isDisconnecting}
+                    className="flex-1 px-4 py-2 bg-white text-slate-600 font-bold rounded-lg border border-slate-200 hover:bg-slate-50 transition-all"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </motion.div>
+            )}
           </motion.div>
         ) : qrCode ? (
           <div className="flex flex-col items-center">

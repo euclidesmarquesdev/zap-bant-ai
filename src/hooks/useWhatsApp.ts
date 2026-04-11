@@ -36,5 +36,20 @@ export function useWhatsApp() {
     }
   };
 
-  return { qrCode, isReady, lastMessage, sendAIResponse };
+  const disconnect = async () => {
+    try {
+      const response = await fetch('/api/whatsapp/disconnect', { method: 'POST' });
+      const data = await response.json();
+      if (data.success) {
+        setIsReady(false);
+        setQrCode("");
+      }
+      return data.success;
+    } catch (error) {
+      console.error('Error disconnecting WhatsApp:', error);
+      return false;
+    }
+  };
+
+  return { qrCode, isReady, lastMessage, sendAIResponse, disconnect };
 }

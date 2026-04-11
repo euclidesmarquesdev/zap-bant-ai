@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { auth, googleProvider, db } from './firebase';
 import { signInWithPopup, onAuthStateChanged, User } from 'firebase/auth';
-import { doc, setDoc, getDoc, collection, onSnapshot, query, orderBy, addDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, setDoc, getDoc, collection, onSnapshot, query, orderBy, addDoc, updateDoc, serverTimestamp, getDocs, limit } from 'firebase/firestore';
 import { useWhatsApp } from './hooks/useWhatsApp';
 import { processMessage } from './services/geminiService';
 import Sidebar from './components/Sidebar';
@@ -14,13 +14,14 @@ import AgentManager from './components/AgentManager';
 import WhatsAppConnector from './components/WhatsAppConnector';
 import { LogIn, MessageSquare, LayoutDashboard, Users, Bot, BarChart3, Settings } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { toast } from 'sonner';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [trainingData, setTrainingData] = useState({ agentMd: '', shopMd: '' });
-  const { qrCode, isReady, lastMessage, sendAIResponse } = useWhatsApp();
+  const { qrCode, isReady, lastMessage, sendAIResponse, disconnect } = useWhatsApp();
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -60,22 +61,43 @@ export default function App() {
     const leadSnap = await getDoc(leadRef);
 
     let history: any[] = [];
+    let currentLeadData: any = null;
+
     if (leadSnap.exists()) {
-      // Fetch recent messages for context
-      // For simplicity, we'll just use the last message for now
-      // In a real app, you'd fetch the last 5-10 messages
+      currentLeadData = leadSnap.data();
+      // Fetch last 10 messages for context
+      const messagesRef = collection(db, 'leads', leadId, 'messages');
+      const q = query(messagesRef, orderBy('timestamp', 'desc'), limit(10));
+      const querySnapshot = await getDocs(q);
+      history = querySnapshot.docs
+        .map(doc => ({
+          role: doc.data().sender === 'lead' ? 'user' : 'model',
+          content: doc.data().text
+        }))
+        .reverse();
     } else {
       // Create new lead
-      await setDoc(leadRef, {
+      currentLeadData = {
         id: leadId,
-        phone: leadId.split('@')[0],
-        name: 'Cliente WhatsApp',
+        phone: leadId, 
+        chatId: msg.chatId || leadId,
+        name: msg.pushName || 'Cliente WhatsApp',
+        photoUrl: msg.profilePicUrl || '',
         status: 'novo',
         score: 0,
         bant: { budget: false, authority: false, need: false, timeline: false },
         lastMessage: msg.body,
+        updatedAt: new Date() // Use local date for immediate context
+      };
+      await setDoc(leadRef, {
+        ...currentLeadData,
         updatedAt: serverTimestamp()
       });
+    }
+
+    // Update photo if changed
+    if (msg.profilePicUrl) {
+      await updateDoc(leadRef, { photoUrl: msg.profilePicUrl });
     }
 
     // Save message to firestore
@@ -87,10 +109,16 @@ export default function App() {
 
     // Process with Gemini
     try {
-      const result = await processMessage(msg.body, history, trainingData.agentMd, trainingData.shopMd);
+      const result = await processMessage(
+        msg.body, 
+        history, 
+        trainingData.agentMd, 
+        trainingData.shopMd,
+        currentLeadData
+      );
       
       // Update lead status and BANT
-      await updateDoc(leadRef, {
+      const updateData: any = {
         status: result.status,
         score: result.leadScore,
         bant: {
@@ -101,7 +129,32 @@ export default function App() {
         },
         lastMessage: result.response,
         updatedAt: serverTimestamp()
-      });
+      };
+
+      if (result.name) {
+        updateData.name = result.name;
+      }
+
+      // Identify product if in closing status
+      if (result.status === 'fechamento') {
+        // Simple logic to extract product from AI response or context
+        // In a real app, Gemini would return this explicitly
+        const shopMd = trainingData.shopMd.toLowerCase();
+        const response = result.response.toLowerCase();
+        
+        // Try to find product name from SHOP.md in the response
+        const products = shopMd.match(/### (.*)/g)?.map(p => p.replace('### ', '')) || [];
+        const foundProduct = products.find(p => response.includes(p.toLowerCase()));
+        if (foundProduct) {
+          updateData.product = foundProduct;
+        }
+      }
+
+      await updateDoc(leadRef, updateData);
+
+      // Get the correct chat ID for reply
+      const currentLeadSnap = await getDoc(leadRef);
+      const targetChatId = currentLeadSnap.data()?.chatId || leadId;
 
       // Save AI message to firestore
       await addDoc(collection(db, 'leads', leadId, 'messages'), {
@@ -111,9 +164,14 @@ export default function App() {
       });
 
       // Send via WhatsApp
-      sendAIResponse(leadId, result.response);
-    } catch (error) {
+      sendAIResponse(targetChatId, result.response);
+    } catch (error: any) {
       console.error('Error processing message with Gemini:', error);
+      if (error.message?.includes("GEMINI_API_KEY") || error.message?.includes("Autenticação")) {
+        toast.error(error.message);
+      } else {
+        toast.error("Erro ao processar mensagem com a IA. Verifique os logs.");
+      }
     }
   };
 
@@ -180,7 +238,7 @@ export default function App() {
             )}
             {activeTab === 'whatsapp' && (
               <motion.div key="whatsapp" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
-                <WhatsAppConnector qrCode={qrCode} isReady={isReady} />
+                <WhatsAppConnector qrCode={qrCode} isReady={isReady} onDisconnect={disconnect} />
               </motion.div>
             )}
           </AnimatePresence>

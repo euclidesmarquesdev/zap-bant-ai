@@ -4,7 +4,7 @@ import { db } from '../firebase';
 import { Send, User, Bot, Phone, MoreVertical, Search, ShieldCheck, MessageSquare } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { cn } from '../lib/utils';
+import { formatPhoneNumber, cn } from '../lib/utils';
 
 interface ChatProps {
   selectedLeadId: string | null;
@@ -59,7 +59,7 @@ export default function Chat({ selectedLeadId }: ChatProps) {
     await fetch('/api/whatsapp/send', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ to: activeLeadId, message: text })
+      body: JSON.stringify({ to: activeLead.chatId || activeLeadId, message: text })
     });
   };
 
@@ -87,8 +87,12 @@ export default function Chat({ selectedLeadId }: ChatProps) {
                 activeLeadId === lead.id && "bg-blue-50/50 border-l-4 border-l-blue-600"
               )}
             >
-              <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center text-slate-600 font-bold shrink-0">
-                {lead.name[0]}
+              <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center text-slate-600 font-bold shrink-0 overflow-hidden border border-slate-200">
+                {lead.photoUrl ? (
+                  <img src={lead.photoUrl} alt={lead.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                ) : (
+                  lead.name ? lead.name[0] : '?'
+                )}
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex justify-between items-start">
@@ -114,13 +118,17 @@ export default function Chat({ selectedLeadId }: ChatProps) {
           <>
             <div className="p-6 bg-white border-b border-slate-100 flex items-center justify-between">
               <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold">
-                  {activeLead.name[0]}
+                <div className="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold overflow-hidden border border-slate-200">
+                  {activeLead.photoUrl ? (
+                    <img src={activeLead.photoUrl} alt={activeLead.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                  ) : (
+                    activeLead.name ? activeLead.name[0] : '?'
+                  )}
                 </div>
                 <div>
                   <h4 className="font-bold text-slate-900">{activeLead.name}</h4>
                   <div className="flex items-center gap-2">
-                    <span className="text-xs text-slate-500">{activeLead.phone}</span>
+                    <span className="text-xs text-slate-500">{formatPhoneNumber(activeLead.phone)}</span>
                     <span className="w-1 h-1 bg-slate-300 rounded-full"></span>
                     <span className="text-xs font-bold text-blue-600 uppercase tracking-wider">Score: {activeLead.score}</span>
                   </div>

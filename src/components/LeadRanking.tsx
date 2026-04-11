@@ -3,6 +3,7 @@ import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Trophy, Star, TrendingUp, Filter, Download } from 'lucide-react';
 import { motion } from 'motion/react';
+import { formatPhoneNumber } from '../lib/utils';
 
 export default function LeadRanking() {
   const [leads, setLeads] = useState<any[]>([]);
@@ -51,16 +52,20 @@ export default function LeadRanking() {
             
             <div className="relative z-10">
               <div className="flex items-center gap-4 mb-6">
-                <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-xl font-bold ${
+                <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-xl font-bold shrink-0 overflow-hidden ${
                   index === 0 ? 'bg-yellow-50 text-yellow-600' : 
                   index === 1 ? 'bg-slate-50 text-slate-600' : 
                   'bg-orange-50 text-orange-600'
                 }`}>
-                  #{index + 1}
+                  {lead.photoUrl ? (
+                    <img src={lead.photoUrl} alt={lead.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                  ) : (
+                    `#${index + 1}`
+                  )}
                 </div>
                 <div>
-                  <h4 className="font-bold text-slate-900 text-lg">{lead.name}</h4>
-                  <p className="text-sm text-slate-500">{lead.phone}</p>
+                  <h4 className="font-bold text-slate-900 text-lg">{lead.name || 'Cliente s/ Nome'}</h4>
+                  <p className="text-sm text-slate-500">{formatPhoneNumber(lead.phone)}</p>
                 </div>
               </div>
 
@@ -128,12 +133,16 @@ export default function LeadRanking() {
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center text-slate-600 font-bold">
-                        {lead.name[0]}
+                      <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center text-slate-600 font-bold overflow-hidden border border-slate-200">
+                        {lead.photoUrl ? (
+                          <img src={lead.photoUrl} alt={lead.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                        ) : (
+                          lead.name ? lead.name[0] : '?'
+                        )}
                       </div>
                       <div>
-                        <p className="font-semibold text-slate-900">{lead.name}</p>
-                        <p className="text-xs text-slate-500">{lead.phone}</p>
+                        <p className="font-semibold text-slate-900">{lead.name || 'Cliente s/ Nome'}</p>
+                        <p className="text-xs text-slate-500">{formatPhoneNumber(lead.phone)}</p>
                       </div>
                     </div>
                   </td>
