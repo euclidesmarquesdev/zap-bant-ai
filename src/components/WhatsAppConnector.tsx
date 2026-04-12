@@ -5,10 +5,11 @@ import { motion } from 'motion/react';
 interface WhatsAppConnectorProps {
   qrCode: string;
   isReady: boolean;
+  userPhone?: string;
   onDisconnect: () => Promise<boolean>;
 }
 
-export default function WhatsAppConnector({ qrCode, isReady, onDisconnect }: WhatsAppConnectorProps) {
+export default function WhatsAppConnector({ qrCode, isReady, userPhone, onDisconnect }: WhatsAppConnectorProps) {
   const [isDisconnecting, setIsDisconnecting] = React.useState(false);
   const [showConfirm, setShowConfirm] = React.useState(false);
 
@@ -37,7 +38,16 @@ export default function WhatsAppConnector({ qrCode, isReady, onDisconnect }: Wha
               <CheckCircle2 className="text-green-600 w-12 h-12" />
             </div>
             <h3 className="text-2xl font-bold text-slate-900">Conectado com Sucesso!</h3>
-            <p className="text-slate-500 mt-2">Seu agente de IA já está respondendo mensagens.</p>
+            
+            {userPhone && (
+              <div className="mt-2 px-4 py-2 bg-green-50 rounded-lg border border-green-100">
+                <p className="text-green-700 font-medium text-sm">
+                  📱 Conectado como: <span className="font-mono font-bold">+{userPhone}</span>
+                </p>
+              </div>
+            )}
+
+            <p className="text-slate-500 mt-4">Seu agente de IA já está respondendo mensagens.</p>
             
             {!showConfirm ? (
               <button 

@@ -96,11 +96,22 @@ export default function Chat({ selectedLeadId }: ChatProps) {
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex justify-between items-start">
-                  <p className="font-bold text-slate-900 truncate">{lead.name}</p>
+                  <p className="font-bold text-slate-900 truncate">
+                    {lead.name === 'Cliente WhatsApp' && lead.phone?.length <= 15 
+                      ? formatPhoneNumber(lead.phone) 
+                      : lead.name}
+                  </p>
                   <span className="text-[10px] text-slate-400">
                     {lead.updatedAt ? format(lead.updatedAt.toDate(), "HH:mm") : ''}
                   </span>
                 </div>
+                <p className="text-[10px] text-slate-400 font-mono mt-0.5">
+                  {lead.phone?.length > 15 ? (
+                    <span className="text-blue-500">Mapeando Telefone...</span>
+                  ) : (
+                    lead.name === 'Cliente WhatsApp' ? 'WhatsApp' : formatPhoneNumber(lead.phone)
+                  )}
+                </p>
                 <p className="text-xs text-slate-500 truncate mt-1">{lead.lastMessage}</p>
                 <div className="flex items-center gap-2 mt-2">
                   <span className={`w-2 h-2 rounded-full ${lead.status === 'humano' ? 'bg-orange-500 animate-pulse' : 'bg-green-500'}`}></span>
@@ -126,9 +137,19 @@ export default function Chat({ selectedLeadId }: ChatProps) {
                   )}
                 </div>
                 <div>
-                  <h4 className="font-bold text-slate-900">{activeLead.name}</h4>
+                  <h4 className="font-bold text-slate-900">
+                    {activeLead.name === 'Cliente WhatsApp' && activeLead.phone?.length <= 15 
+                      ? formatPhoneNumber(activeLead.phone) 
+                      : activeLead.name}
+                  </h4>
                   <div className="flex items-center gap-2">
-                    <span className="text-xs text-slate-500">{formatPhoneNumber(activeLead.phone)}</span>
+                    <span className="text-xs text-slate-500">
+                      {activeLead.phone?.length > 15 ? (
+                        <span className="text-blue-500">Mapeando Telefone...</span>
+                      ) : (
+                        activeLead.name === 'Cliente WhatsApp' ? 'WhatsApp' : formatPhoneNumber(activeLead.phone)
+                      )}
+                    </span>
                     <span className="w-1 h-1 bg-slate-300 rounded-full"></span>
                     <span className="text-xs font-bold text-blue-600 uppercase tracking-wider">Score: {activeLead.score}</span>
                   </div>

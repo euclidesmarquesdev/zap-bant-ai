@@ -5,6 +5,7 @@ export function useWhatsApp() {
   const [socket, setSocket] = useState<Socket | null>(null);
   const [qrCode, setQrCode] = useState<string>("");
   const [isReady, setIsReady] = useState(false);
+  const [userPhone, setUserPhone] = useState<string>("");
   const [lastMessage, setLastMessage] = useState<any>(null);
 
   useEffect(() => {
@@ -14,11 +15,15 @@ export function useWhatsApp() {
     newSocket.on('whatsapp:qr', (qr) => {
       setQrCode(qr);
       setIsReady(false);
+      setUserPhone("");
     });
 
-    newSocket.on('whatsapp:ready', () => {
+    newSocket.on('whatsapp:ready', (data?: { userPhone: string }) => {
       setIsReady(true);
       setQrCode("");
+      if (data?.userPhone) {
+        setUserPhone(data.userPhone);
+      }
     });
 
     newSocket.on('whatsapp:message', (msg) => {
@@ -51,5 +56,11 @@ export function useWhatsApp() {
     }
   };
 
-  return { qrCode, isReady, lastMessage, sendAIResponse, disconnect };
+  const setTyping = (to: string, status: 'composing' | 'paused') => {
+    if (socket) {
+      socket.emit('whatsapp:typing', { to, status });
+    }
+  };
+
+  return { qrCode, isReady, userPhone, lastMessage, sendAIResponse, disconnect, setTyping };
 }

@@ -2,12 +2,14 @@ import React from 'react';
 import { User } from 'firebase/auth';
 import { Bell, Search, LogOut } from 'lucide-react';
 import { auth } from '../firebase';
+import { toast } from 'sonner';
 
 interface HeaderProps {
   user: User;
+  userPhone?: string;
 }
 
-export default function Header({ user }: HeaderProps) {
+export default function Header({ user, userPhone }: HeaderProps) {
   return (
     <header className="h-20 bg-white border-bottom border-slate-200 px-8 flex items-center justify-between">
       <div className="flex-1 max-w-xl">
@@ -30,7 +32,9 @@ export default function Header({ user }: HeaderProps) {
         <div className="flex items-center gap-3 pl-6 border-l border-slate-200">
           <div className="text-right">
             <p className="text-sm font-semibold text-slate-900">{user.displayName}</p>
-            <p className="text-xs text-slate-500">Administrador</p>
+            <p className="text-xs font-medium text-blue-600">
+              {userPhone ? `📱 +${userPhone}` : 'Administrador'}
+            </p>
           </div>
           <img 
             src={user.photoURL || `https://ui-avatars.com/api/?name=${user.displayName}`} 
@@ -38,8 +42,17 @@ export default function Header({ user }: HeaderProps) {
             alt={user.displayName || 'User'}
           />
           <button 
-            onClick={() => auth.signOut()}
+            onClick={async () => {
+              try {
+                await auth.signOut();
+                toast.success('Sessão encerrada com sucesso');
+              } catch (error) {
+                console.error('Erro ao sair:', error);
+                toast.error('Erro ao encerrar sessão');
+              }
+            }}
             className="p-2 text-slate-400 hover:text-red-500 transition-all"
+            title="Sair da conta Google"
           >
             <LogOut className="w-5 h-5" />
           </button>

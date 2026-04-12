@@ -19,11 +19,16 @@ export async function processMessage(
   history: { role: string; content: string }[],
   agentMd: string,
   shopMd: string,
-  currentLead?: any
+  currentLead?: any,
+  userApiKey?: string
 ): Promise<BANTResult> {
-  if (!process.env.GEMINI_API_KEY) {
+  const apiKey = userApiKey || process.env.GEMINI_API_KEY;
+
+  if (!apiKey) {
     throw new Error("GEMINI_API_KEY não configurada. Por favor, adicione sua chave de API nas configurações.");
   }
+
+  const aiClient = new GoogleGenAI({ apiKey });
 
   const currentState = currentLead ? `
     ESTADO ATUAL DO LEAD (JÁ COLETADO):
@@ -54,6 +59,12 @@ export async function processMessage(
     6. Se o Lead Score atingir 75 ou mais, tente o fechamento.
     7. Se o cliente perguntar o preço, informe o preço de SHOP.md.
     
+    REGRAS DE OURO CONTRA ALUCINAÇÃO:
+    - VOCÊ SÓ PODE VENDER O QUE ESTÁ EM SHOP.md.
+    - SE O CLIENTE PEDIR ALGO QUE NÃO ESTÁ EM SHOP.md, diga educadamente que não trabalhamos com esse produto/serviço e ofereça o que for mais próximo do nosso catálogo.
+    - NUNCA invente links, preços ou produtos. Se não estiver em SHOP.md, NÃO EXISTE para você.
+    - Se o cliente insistir em algo fora do catálogo, direcione para falar com um humano (status: "humano").
+    
     STATUS DO FUNIL:
     - "novo": Primeira interação.
     - "atendido": Conversa iniciada, qualificando BANT.
@@ -76,7 +87,7 @@ export async function processMessage(
   `;
 
     try {
-      const response = await ai.models.generateContent({
+      const response = await aiClient.models.generateContent({
         model: "gemini-3-flash-preview",
         contents: [
           { role: "user", parts: [{ text: `Histórico: ${JSON.stringify(history)}\n\nNova mensagem: ${message}` }] }

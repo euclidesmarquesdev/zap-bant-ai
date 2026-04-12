@@ -5,6 +5,7 @@ import { cn } from '../lib/utils';
 interface SidebarProps {
   activeTab: string;
   setActiveTab: (tab: string) => void;
+  userPhone?: string;
 }
 
 const menuItems = [
@@ -16,14 +17,21 @@ const menuItems = [
   { id: 'whatsapp', label: 'WhatsApp', icon: QrCode },
 ];
 
-export default function Sidebar({ activeTab, setActiveTab }: SidebarProps) {
+export default function Sidebar({ activeTab, setActiveTab, userPhone }: SidebarProps) {
   return (
     <aside className="w-64 bg-white border-r border-slate-200 flex flex-col">
-      <div className="p-6 flex items-center gap-3">
-        <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-100">
-          <Bot className="text-white w-6 h-6" />
+      <div className="p-6 flex flex-col gap-1">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-100">
+            <Bot className="text-white w-6 h-6" />
+          </div>
+          <div className="flex flex-col">
+            <span className="font-bold text-lg text-slate-900 tracking-tight leading-none">
+              {userPhone ? `+${userPhone}` : 'BANT Agent'}
+            </span>
+            {userPhone && <span className="text-[10px] text-green-600 font-bold uppercase tracking-widest mt-0.5">Conectado</span>}
+          </div>
         </div>
-        <span className="font-bold text-xl text-slate-900 tracking-tight">BANT Agent</span>
       </div>
       
       <nav className="flex-1 px-4 py-4 space-y-1">
@@ -45,7 +53,15 @@ export default function Sidebar({ activeTab, setActiveTab }: SidebarProps) {
       </nav>
       
       <div className="p-4 border-t border-slate-100">
-        <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-all">
+        <button 
+          onClick={() => setActiveTab('settings')}
+          className={cn(
+            "w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all",
+            activeTab === 'settings'
+              ? "bg-blue-50 text-blue-600 shadow-sm"
+              : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+          )}
+        >
           <Settings className="w-5 h-5" />
           Configurações
         </button>

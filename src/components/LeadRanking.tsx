@@ -64,8 +64,18 @@ export default function LeadRanking() {
                   )}
                 </div>
                 <div>
-                  <h4 className="font-bold text-slate-900 text-lg">{lead.name || 'Cliente s/ Nome'}</h4>
-                  <p className="text-sm text-slate-500">{formatPhoneNumber(lead.phone)}</p>
+                  <h4 className="font-bold text-slate-900 text-lg">
+                    {lead.name === 'Cliente WhatsApp' && lead.phone?.length <= 15 
+                      ? formatPhoneNumber(lead.phone) 
+                      : lead.name || 'Cliente s/ Nome'}
+                  </h4>
+                  <p className="text-sm text-slate-500">
+                    {lead.phone?.length > 15 ? (
+                      <span className="text-blue-500">Mapeando...</span>
+                    ) : (
+                      lead.name === 'Cliente WhatsApp' ? 'WhatsApp' : formatPhoneNumber(lead.phone)
+                    )}
+                  </p>
                 </div>
               </div>
 
@@ -141,8 +151,18 @@ export default function LeadRanking() {
                         )}
                       </div>
                       <div>
-                        <p className="font-semibold text-slate-900">{lead.name || 'Cliente s/ Nome'}</p>
-                        <p className="text-xs text-slate-500">{formatPhoneNumber(lead.phone)}</p>
+                        <p className="font-semibold text-slate-900">
+                          {lead.name === 'Cliente WhatsApp' && lead.phone?.length <= 15 
+                            ? formatPhoneNumber(lead.phone) 
+                            : lead.name || 'Cliente s/ Nome'}
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          {lead.phone?.length > 15 ? (
+                            <span className="text-blue-500">Mapeando...</span>
+                          ) : (
+                            lead.name === 'Cliente WhatsApp' ? 'WhatsApp' : formatPhoneNumber(lead.phone)
+                          )}
+                        </p>
                       </div>
                     </div>
                   </td>

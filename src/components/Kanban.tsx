@@ -17,7 +17,11 @@ const COLUMNS = [
   { id: 'humano', title: 'Aguardando Humano' },
 ];
 
-export default function Kanban() {
+interface KanbanProps {
+  userPhone?: string;
+}
+
+export default function Kanban({ userPhone }: KanbanProps) {
   const [leads, setLeads] = useState<any[]>([]);
 
   useEffect(() => {
@@ -67,6 +71,40 @@ export default function Kanban() {
         }
         
         updateData.lastMessage = resumeMessage;
+      }
+
+      // Se estiver encaminhando para humano, envia mensagem automática
+      if (newStatus === 'humano') {
+        const humanMessage = "Aguarde um momento. Estou encaminhando seu atendimento para um especialista humano que continuará a conversa com você em breve. 👨‍💻";
+        
+        await addDoc(collection(db, 'leads', draggableId, 'messages'), {
+          text: humanMessage,
+          sender: 'ai',
+          timestamp: serverTimestamp()
+        });
+
+        const targetTo = leadData?.chatId || draggableId;
+        try {
+          await fetch('/api/whatsapp/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ to: targetTo, message: humanMessage })
+          });
+
+          // Notifica o administrador no próprio WhatsApp
+          if (userPhone) {
+            const adminNotifyMessage = `🚨 ATENÇÃO: O lead ${leadData?.name || formatPhoneNumber(leadData?.phone || draggableId)} solicitou atendimento humano. Verifique o painel!`;
+            await fetch('/api/whatsapp/send', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ to: `${userPhone}@s.whatsapp.net`, message: adminNotifyMessage })
+            });
+          }
+        } catch (err) {
+          console.error('Error sending human notification from Kanban:', err);
+        }
+        
+        updateData.lastMessage = humanMessage;
       }
 
       await updateDoc(leadRef, updateData);
@@ -158,10 +196,18 @@ function KanbanCard({ lead, isDragging }: { lead: any, isDragging?: boolean }) {
             )}
           </div>
           <div>
-            <p className="text-sm font-bold text-slate-900 truncate max-w-[140px]">{lead.name}</p>
+            <p className="text-sm font-bold text-slate-900 truncate max-w-[140px]">
+              {lead.name === 'Cliente WhatsApp' && lead.phone?.length <= 15 
+                ? formatPhoneNumber(lead.phone) 
+                : lead.name}
+            </p>
             <div className="flex items-center gap-1 text-[10px] text-slate-400">
               <Phone className="w-3 h-3" />
-              {formatPhoneNumber(lead.phone || lead.id) || lead.phone || lead.id}
+              {lead.phone?.length > 15 ? (
+                <span className="text-blue-500">Mapeando...</span>
+              ) : (
+                lead.name === 'Cliente WhatsApp' ? 'WhatsApp' : formatPhoneNumber(lead.phone || lead.id)
+              )}
             </div>
           </div>
         </div>

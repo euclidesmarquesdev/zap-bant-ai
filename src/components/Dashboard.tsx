@@ -10,11 +10,12 @@ import { toast } from 'sonner';
 
 interface DashboardProps {
   onSelectLead: (id: string) => void;
+  userPhone?: string;
 }
 
 type Period = 'hoje' | '48h' | 'semana' | 'mes';
 
-export default function Dashboard({ onSelectLead }: DashboardProps) {
+export default function Dashboard({ onSelectLead, userPhone }: DashboardProps) {
   const [leads, setLeads] = useState<any[]>([]);
   const [period, setPeriod] = useState<Period>('semana');
   const [stats, setStats] = useState({
@@ -85,6 +86,44 @@ export default function Dashboard({ onSelectLead }: DashboardProps) {
         }
         
         updateData.lastMessage = resumeMessage;
+      }
+
+      // Se estiver encaminhando para humano, envia mensagem automática
+      if (newStatus === 'humano') {
+        const humanMessage = "Aguarde um momento. Estou encaminhando seu atendimento para um especialista humano que continuará a conversa com você em breve. 👨‍💻";
+        
+        console.log('ENCAMINHANDO PARA HUMANO:', leadId);
+
+        // Salva mensagem no Firestore
+        await addDoc(collection(db, 'leads', leadId, 'messages'), {
+          text: humanMessage,
+          sender: 'ai',
+          timestamp: serverTimestamp()
+        });
+
+        // Envia via WhatsApp
+        const targetTo = leadData?.chatId || leadId;
+        try {
+          await fetch('/api/whatsapp/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ to: targetTo, message: humanMessage })
+          });
+
+          // Notifica o administrador no próprio WhatsApp
+          if (userPhone) {
+            const adminNotifyMessage = `🚨 ATENÇÃO: O lead ${leadData?.name || formatPhoneNumber(leadData?.phone || leadId)} solicitou atendimento humano. Verifique o painel!`;
+            await fetch('/api/whatsapp/send', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ to: `${userPhone}@s.whatsapp.net`, message: adminNotifyMessage })
+            });
+          }
+        } catch (err) {
+          console.error('Error sending human notification:', err);
+        }
+        
+        updateData.lastMessage = humanMessage;
       }
 
       await updateDoc(leadRef, updateData);
@@ -236,7 +275,6 @@ export default function Dashboard({ onSelectLead }: DashboardProps) {
             <thead>
               <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider">
                 <th className="px-6 py-4 font-semibold">Cliente</th>
-                <th className="px-6 py-4 font-semibold">Produto</th>
                 <th className="px-6 py-4 font-semibold">Status</th>
                 <th className="px-6 py-4 font-semibold">Score</th>
                 <th className="px-6 py-4 font-semibold">BANT</th>
@@ -257,7 +295,11 @@ export default function Dashboard({ onSelectLead }: DashboardProps) {
                         )}
                       </div>
                       <div>
-                        <p className="font-semibold text-slate-900">{lead.name || 'Cliente s/ Nome'}</p>
+                        <p className="font-semibold text-slate-900">
+                          {lead.name === 'Cliente WhatsApp' && lead.phone?.length <= 15 
+                            ? formatPhoneNumber(lead.phone) 
+                            : lead.name || 'Cliente s/ Nome'}
+                        </p>
                         <p className="text-xs text-slate-500 font-mono tracking-wider">
                           {lead.phone?.length > 15 ? (
                             <span className="text-blue-500 flex items-center gap-1">
@@ -265,20 +307,11 @@ export default function Dashboard({ onSelectLead }: DashboardProps) {
                               Mapeando Telefone...
                             </span>
                           ) : (
-                            formatPhoneNumber(lead.phone || lead.id) || lead.phone || lead.id
+                            lead.name === 'Cliente WhatsApp' ? 'WhatsApp' : formatPhoneNumber(lead.phone || lead.id)
                           )}
                         </p>
                       </div>
                     </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    {lead.product ? (
-                      <span className="px-2 py-1 bg-blue-50 text-blue-600 rounded-lg text-[10px] font-bold border border-blue-100 whitespace-nowrap">
-                        {lead.product}
-                      </span>
-                    ) : (
-                      <span className="text-xs text-slate-400">-</span>
-                    )}
                   </td>
                   <td className="px-6 py-4">
                     <StatusBadge status={lead.status} />
