@@ -168,17 +168,17 @@ export default function Chat({ selectedLeadId }: ChatProps) {
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+            <div className="flex-1 overflow-y-auto p-6 space-y-4 flex flex-col">
               {messages.map((msg) => (
                 <div 
                   key={msg.id} 
                   className={cn(
-                    "flex flex-col max-w-[70%]",
+                    "flex flex-col max-w-[80%] md:max-w-[70%]",
                     msg.sender === 'lead' ? "self-start" : "self-end items-end"
                   )}
                 >
                   <div className={cn(
-                    "p-4 rounded-2xl text-sm shadow-sm",
+                    "p-4 rounded-2xl text-sm shadow-sm transition-all",
                     msg.sender === 'lead' 
                       ? "bg-white text-slate-800 rounded-tl-none border border-slate-100" 
                       : msg.sender === 'ai'
@@ -187,7 +187,10 @@ export default function Chat({ selectedLeadId }: ChatProps) {
                   )}>
                     {msg.text}
                   </div>
-                  <div className="flex items-center gap-1 mt-1 px-1">
+                  <div className={cn(
+                    "flex items-center gap-1 mt-1 px-1",
+                    msg.sender === 'lead' ? "flex-row" : "flex-row-reverse"
+                  )}>
                     {msg.sender === 'ai' && <Bot className="w-3 h-3 text-blue-500" />}
                     {msg.sender === 'human' && <User className="w-3 h-3 text-slate-500" />}
                     <span className="text-[10px] text-slate-400">
