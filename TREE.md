@@ -6,10 +6,13 @@ Abaixo está a descrição detalhada da árvore de diretórios e arquivos do sis
 *   `📄 server.ts` — 🧠 O coração do sistema. Servidor Express que gerencia Socket.io, conexão WhatsApp (Baileys) e rotas de API.
 *   `📄 firebase.ts` — 🔥 Configuração e inicialização do Firebase (Auth e Firestore) com suporte a setup dinâmico.
 *   `📄 firestore.rules` — 🛡️ Regras de segurança do banco de dados para proteção de dados e PII.
+*   `📄 firebase-blueprint.json` — 📐 Blueprint da estrutura de dados do Firestore (Entidades e Caminhos).
 *   `📄 firebase-applet-config.json` — 🔑 Armazena as credenciais do Firebase do cliente (gerado no setup).
 *   `📄 AGENT.md` — 🤖 Template inicial da personalidade e comportamento do agente.
 *   `📄 SHOP.md` — 🛍️ Template inicial do catálogo de produtos e regras de negócio.
+*   `📄 .env.example` — 📝 Exemplo de variáveis de ambiente necessárias.
 *   `📄 package.json` — 📦 Dependências do projeto e scripts de execução.
+*   `📄 metadata.json` — ℹ️ Metadados do aplicativo (nome, descrição, permissões).
 
 ### 📁 src/ (Frontend React)
 *   `📄 App.tsx` — 🏠 Componente principal. Gerencia rotas, estado global de autenticação e processamento de mensagens.
