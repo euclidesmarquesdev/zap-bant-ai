@@ -133,10 +133,25 @@ export default function SetupScreen({ onComplete }: { onComplete: () => void }) 
           </div>
 
           <div className="pt-6 border-t border-slate-100 flex items-center justify-between">
-            <div className="flex items-center gap-2 text-slate-400 text-sm">
-              <CheckCircle2 className="w-4 h-4" />
-              <span>O sistema irá validar a conexão após salvar.</span>
-            </div>
+            <button 
+              type="button"
+              onClick={() => {
+                if (confirm('Deseja realmente limpar as configurações e tentar novamente?')) {
+                  setConfig({
+                    apiKey: '',
+                    authDomain: '',
+                    projectId: '',
+                    storageBucket: '',
+                    messagingSenderId: '',
+                    appId: '',
+                    firestoreDatabaseId: '(default)'
+                  });
+                }
+              }}
+              className="text-slate-400 hover:text-red-500 text-sm font-medium transition-all"
+            >
+              Limpar Campos
+            </button>
             <button 
               type="submit"
               disabled={loading}

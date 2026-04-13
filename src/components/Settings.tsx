@@ -46,10 +46,22 @@ export default function Settings({ user }: SettingsProps) {
   });
 
   useEffect(() => {
+    let isMounted = true;
+    const timeoutId = setTimeout(() => {
+      if (isMounted && loading) {
+        setLoading(false);
+        toast.error('Tempo limite de carregamento excedido. Verifique sua conexão ou configuração do Firebase.');
+      }
+    }, 10000);
+
     async function loadSettings() {
       try {
+        if (!db) {
+          throw new Error('Banco de dados não inicializado');
+        }
+
         const userDoc = await getDoc(doc(db, 'users', user.uid));
-        if (userDoc.exists()) {
+        if (isMounted && userDoc.exists()) {
           const data = userDoc.data();
           setSettings(prev => ({
             ...prev,
@@ -63,15 +75,23 @@ export default function Settings({ user }: SettingsProps) {
         // Load Firebase Config
         const res = await fetch('/api/config');
         const fbData = await res.json();
-        if (fbData) setFbConfig(fbData);
+        if (isMounted && fbData) setFbConfig(fbData);
       } catch (error) {
         console.error('Erro ao carregar configurações:', error);
-        toast.error('Erro ao carregar suas configurações.');
+        if (isMounted) toast.error('Erro ao carregar suas configurações. Verifique o Firebase.');
       } finally {
-        setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+          clearTimeout(timeoutId);
+        }
       }
     }
     loadSettings();
+
+    return () => {
+      isMounted = false;
+      clearTimeout(timeoutId);
+    };
   }, [user]);
 
   const handleSave = async () => {

@@ -105,6 +105,13 @@ async function startServer() {
         
         console.log('WhatsApp: Conexão fechada. Código:', statusCode, 'Erro:', errorMessage);
 
+        // Cleanup current socket listeners to prevent memory leaks and duplicate connections
+        if (sock) {
+          sock.ev.removeAllListeners('connection.update');
+          sock.ev.removeAllListeners('creds.update');
+          sock.ev.removeAllListeners('messages.upsert');
+        }
+
         // Erro 401 ou LoggedOut: Reset total da sessão
         if (statusCode === DisconnectReason.loggedOut || statusCode === 401) {
           console.log('WhatsApp: Sessão inválida ou deslogada. Limpando e gerando novo QR...');
@@ -124,14 +131,15 @@ async function startServer() {
           
           setTimeout(() => connectToWhatsApp(), 2000);
         } 
-        // Erro 515 ou Stream Errored: Reinício imediato
+        // Erro 515 ou Stream Errored: Reinício com backoff exponencial
         else if (statusCode === 515 || errorMessage.includes('Stream Errored')) {
           streamErrorCount++;
-          console.log(`WhatsApp: Erro de Stream (515) - Tentativa ${streamErrorCount}. Reiniciando...`);
+          const delay = Math.min(1000 * Math.pow(2, streamErrorCount), 30000);
+          console.log(`WhatsApp: Erro de Stream (515) - Tentativa ${streamErrorCount}. Reiniciando em ${delay}ms...`);
           isReady = false;
           
-          if (streamErrorCount > 3) {
-            console.log('WhatsApp: Erro 515 persistente. Limpando sessão para forçar novo QR...');
+          if (streamErrorCount > 5) {
+            console.log('WhatsApp: Erro 515 persistente após 5 tentativas. Limpando sessão para forçar novo QR...');
             const authPath = path.join(process.cwd(), 'auth_info_baileys');
             if (fs.existsSync(authPath)) {
               try { fs.rmSync(authPath, { recursive: true, force: true }); } catch (e) {}
@@ -139,14 +147,15 @@ async function startServer() {
             streamErrorCount = 0;
           }
           
-          setTimeout(() => connectToWhatsApp(), 1000);
+          setTimeout(() => connectToWhatsApp(), delay);
         }
         // Outros erros: Tentativa de reconexão padrão
         else {
-          console.log('WhatsApp: Tentando reconectar em 5 segundos...', shouldReconnect);
+          const delay = 5000;
+          console.log(`WhatsApp: Tentando reconectar em ${delay}ms...`, shouldReconnect);
           isReady = false;
           if (shouldReconnect) {
-            setTimeout(() => connectToWhatsApp(), 5000);
+            setTimeout(() => connectToWhatsApp(), delay);
           }
         }
       } else if (connection === 'open') {
