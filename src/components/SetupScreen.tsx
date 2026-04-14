@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Shield, Key, Database, Globe, Save, Loader2, CheckCircle2 } from 'lucide-react';
+import { Shield, Key, Database, Globe, Save, Loader2, CheckCircle2, User } from 'lucide-react';
 import { motion } from 'motion/react';
 import { toast } from 'sonner';
 
@@ -12,7 +12,8 @@ export default function SetupScreen({ onComplete }: { onComplete: () => void }) 
     storageBucket: '',
     messagingSenderId: '',
     appId: '',
-    firestoreDatabaseId: '(default)'
+    firestoreDatabaseId: '(default)',
+    adminEmail: ''
   });
 
   const handleSave = async (e: React.FormEvent) => {
@@ -20,6 +21,11 @@ export default function SetupScreen({ onComplete }: { onComplete: () => void }) 
     setLoading(true);
 
     try {
+      // Basic validation
+      if (!config.adminEmail.includes('@')) {
+        throw new Error('Por favor, insira um e-mail de administrador válido.');
+      }
+
       // 1. Save config to server
       const res = await fetch('/api/config', {
         method: 'POST',
@@ -29,11 +35,8 @@ export default function SetupScreen({ onComplete }: { onComplete: () => void }) 
 
       if (!res.ok) throw new Error('Falha ao salvar configuração no servidor');
 
-      // 2. Trigger installation routine (initial data)
-      // We'll do this by calling a special endpoint or just letting the app handle it on first run
       toast.success('Configuração salva! Reiniciando sistema...');
       
-      // Give time for the server to write the file
       setTimeout(() => {
         window.location.reload();
       }, 2000);
@@ -49,7 +52,7 @@ export default function SetupScreen({ onComplete }: { onComplete: () => void }) 
       <motion.div 
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="bg-white max-w-2xl w-full rounded-3xl shadow-2xl border border-slate-200 overflow-hidden"
+        className="bg-white max-w-3xl w-full rounded-3xl shadow-2xl border border-slate-200 overflow-hidden"
       >
         <div className="bg-blue-600 p-8 text-white">
           <div className="flex items-center gap-4 mb-4">
@@ -57,14 +60,38 @@ export default function SetupScreen({ onComplete }: { onComplete: () => void }) 
               <Shield className="w-8 h-8" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold">Configuração Inicial</h1>
-              <p className="text-blue-100 text-sm">Configure seu Firebase para começar a usar o Agente.</p>
+              <h1 className="text-2xl font-bold">Instalação do Sistema</h1>
+              <p className="text-blue-100 text-sm">Configure sua própria nuvem Firebase para controle total dos seus dados.</p>
             </div>
+          </div>
+          
+          <div className="bg-blue-700/50 rounded-2xl p-4 border border-white/10 text-xs space-y-2">
+            <p className="font-bold flex items-center gap-2"><CheckCircle2 className="w-3 h-3" /> Pré-requisitos no Firebase Console:</p>
+            <ul className="list-disc list-inside opacity-80 space-y-1 ml-2">
+              <li>Ativar <b>Authentication</b> (E-mail/Senha e Google)</li>
+              <li>Criar banco de dados <b>Firestore</b></li>
+              <li>Configurar as regras de segurança (disponíveis na pasta raiz do projeto)</li>
+            </ul>
           </div>
         </div>
 
         <form onSubmit={handleSave} className="p-8 space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="md:col-span-2 space-y-2">
+              <label className="text-xs font-bold text-slate-500 uppercase flex items-center gap-2">
+                <User className="w-3 h-3" /> E-mail do Administrador Principal
+              </label>
+              <input 
+                required
+                type="email"
+                value={config.adminEmail}
+                onChange={e => setConfig({...config, adminEmail: e.target.value})}
+                className="w-full px-4 py-3 bg-blue-50 border border-blue-100 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all font-bold text-blue-900"
+                placeholder="seu-email@admin.com"
+              />
+              <p className="text-[10px] text-slate-400">Este e-mail terá poderes totais no sistema e poderá cadastrar outros atendentes.</p>
+            </div>
+
             <div className="space-y-2">
               <label className="text-xs font-bold text-slate-500 uppercase flex items-center gap-2">
                 <Key className="w-3 h-3" /> API Key
@@ -74,7 +101,7 @@ export default function SetupScreen({ onComplete }: { onComplete: () => void }) 
                 type="text"
                 value={config.apiKey}
                 onChange={e => setConfig({...config, apiKey: e.target.value})}
-                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all text-sm"
                 placeholder="AIzaSy..."
               />
             </div>
@@ -87,8 +114,8 @@ export default function SetupScreen({ onComplete }: { onComplete: () => void }) 
                 type="text"
                 value={config.authDomain}
                 onChange={e => setConfig({...config, authDomain: e.target.value})}
-                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-                placeholder="meu-projeto.firebaseapp.com"
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all text-sm"
+                placeholder="projeto.firebaseapp.com"
               />
             </div>
             <div className="space-y-2">
@@ -100,7 +127,7 @@ export default function SetupScreen({ onComplete }: { onComplete: () => void }) 
                 type="text"
                 value={config.projectId}
                 onChange={e => setConfig({...config, projectId: e.target.value})}
-                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all text-sm"
                 placeholder="meu-projeto-123"
               />
             </div>
@@ -113,7 +140,7 @@ export default function SetupScreen({ onComplete }: { onComplete: () => void }) 
                 type="text"
                 value={config.firestoreDatabaseId}
                 onChange={e => setConfig({...config, firestoreDatabaseId: e.target.value})}
-                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all text-sm"
                 placeholder="(default)"
               />
             </div>
@@ -126,8 +153,21 @@ export default function SetupScreen({ onComplete }: { onComplete: () => void }) 
                 type="text"
                 value={config.appId}
                 onChange={e => setConfig({...config, appId: e.target.value})}
-                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-                placeholder="1:123456789:web:abc123"
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all text-sm"
+                placeholder="1:123:web:abc"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-500 uppercase flex items-center gap-2">
+                <Database className="w-3 h-3" /> Storage Bucket
+              </label>
+              <input 
+                required
+                type="text"
+                value={config.storageBucket}
+                onChange={e => setConfig({...config, storageBucket: e.target.value})}
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all text-sm"
+                placeholder="projeto.appspot.com"
               />
             </div>
           </div>
@@ -136,7 +176,7 @@ export default function SetupScreen({ onComplete }: { onComplete: () => void }) 
             <button 
               type="button"
               onClick={() => {
-                if (confirm('Deseja realmente limpar as configurações e tentar novamente?')) {
+                if (confirm('Deseja realmente limpar as configurações?')) {
                   setConfig({
                     apiKey: '',
                     authDomain: '',
@@ -144,7 +184,8 @@ export default function SetupScreen({ onComplete }: { onComplete: () => void }) 
                     storageBucket: '',
                     messagingSenderId: '',
                     appId: '',
-                    firestoreDatabaseId: '(default)'
+                    firestoreDatabaseId: '(default)',
+                    adminEmail: ''
                   });
                 }
               }}

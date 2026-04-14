@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, updateProfile, signInWithPopup } from 'firebase/auth';
 import { doc, setDoc, getDoc, serverTimestamp, collection, query, where, getDocs, updateDoc, deleteDoc } from 'firebase/firestore';
-import { auth, db, googleProvider } from '../../firebase';
+import { auth, db, googleProvider, adminEmail } from '../../firebase';
 import { Bot, Mail, Lock, User, ArrowRight, Loader2, Sparkles, Chrome } from 'lucide-react';
 import { motion } from 'motion/react';
 import { toast } from 'sonner';
@@ -46,7 +46,7 @@ export default function AuthScreen() {
         const userSnap = await getDoc(userRef);
         
         if (!userSnap.exists()) {
-          const role = user.email === "euclidesmarques.dev@gmail.com" ? 'admin' : 'agent';
+          const role = user.email === adminEmail ? 'admin' : 'agent';
           await setDoc(userRef, {
             uid: user.uid,
             email: user.email?.toLowerCase(),
@@ -100,7 +100,7 @@ export default function AuthScreen() {
             await deleteDoc(doc(db, 'users', invitedDoc.id));
           }
         } else {
-          const role = email === "euclidesmarques.dev@gmail.com" ? 'admin' : 'agent';
+          const role = email === adminEmail ? 'admin' : 'agent';
           await setDoc(doc(db, 'users', user.uid), {
             uid: user.uid,
             email: user.email.toLowerCase(),

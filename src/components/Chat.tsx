@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { collection, onSnapshot, query, orderBy, addDoc, serverTimestamp, doc, getDoc, where } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, addDoc, serverTimestamp, doc, getDoc, where, limit } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Send, User, Bot, Phone, MoreVertical, Search, ShieldCheck, MessageSquare } from 'lucide-react';
 import { format } from 'date-fns';
@@ -22,13 +22,14 @@ export default function Chat({ selectedLeadId, userRole, userId }: ChatProps) {
   useEffect(() => {
     if (!userRole || !userId) return;
 
-    let q = query(collection(db, 'leads'), orderBy('updatedAt', 'desc'));
+    let q = query(collection(db, 'leads'), orderBy('updatedAt', 'desc'), limit(50));
     
     if (userRole === 'agent' && userId) {
       q = query(
         collection(db, 'leads'), 
         where('assignedTo', '==', userId),
-        orderBy('updatedAt', 'desc')
+        orderBy('updatedAt', 'desc'),
+        limit(50)
       );
     }
 
@@ -40,9 +41,13 @@ export default function Chat({ selectedLeadId, userRole, userId }: ChatProps) {
 
   useEffect(() => {
     if (activeLeadId) {
-      const q = query(collection(db, 'leads', activeLeadId, 'messages'), orderBy('timestamp', 'asc'));
+      const q = query(
+        collection(db, 'leads', activeLeadId, 'messages'), 
+        orderBy('timestamp', 'desc'),
+        limit(50)
+      );
       const unsubscribe = onSnapshot(q, (snapshot) => {
-        setMessages(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        setMessages(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).reverse());
       });
       return () => unsubscribe();
     }

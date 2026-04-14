@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { auth, googleProvider, db, isValidConfig } from './firebase';
+import { auth, googleProvider, db, isValidConfig, adminEmail } from './firebase';
 import { signInWithPopup, onAuthStateChanged, User } from 'firebase/auth';
 import { doc, setDoc, getDoc, collection, onSnapshot, query, orderBy, addDoc, updateDoc, serverTimestamp, getDocs, limit } from 'firebase/firestore';
 import { useWhatsApp } from './hooks/useWhatsApp';
@@ -16,6 +16,7 @@ import Settings from './components/Settings';
 import SetupScreen from './components/SetupScreen';
 import TeamManager from './components/TeamManager';
 import AuthScreen from './components/Auth/AuthScreen';
+import { assignLeadToAgent } from './services/assignmentService';
 import { LogIn, MessageSquare, LayoutDashboard, Users, Bot, BarChart3, Settings as SettingsIcon } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
@@ -23,6 +24,7 @@ import { toast } from 'sonner';
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [userRole, setUserRole] = useState<'admin' | 'agent' | null>(null);
+  const [userData, setUserData] = useState<any>(null);
   const [isRoleLoading, setIsRoleLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
@@ -42,22 +44,27 @@ export default function App() {
         // Fetch user role and data
         const userRef = doc(db, 'users', user.uid);
         unsubscribeUser = onSnapshot(userRef, (snap) => {
+          // Primary admin always has admin role in UI
+          if (user.email === adminEmail) {
+            setUserRole('admin');
+            if (snap.exists() && snap.data().role !== 'admin') {
+              updateDoc(userRef, { role: 'admin' }).catch(console.error);
+            }
+          } else if (snap.exists()) {
+            setUserRole(snap.data().role);
+          } else {
+            setUserRole('agent');
+          }
+
           if (snap.exists()) {
             const data = snap.data();
-            // Primary admin always has admin role in UI
-            if (user.email === "euclidesmarques.dev@gmail.com") {
-              setUserRole('admin');
-              // Auto-fix if role was changed by mistake
-              if (data.role !== 'admin') {
-                updateDoc(userRef, { role: 'admin' }).catch(console.error);
-              }
-            } else {
-              setUserRole(data.role);
+            setUserData(data);
+            // Ensure lastAssignedAt exists for round-robin
+            if (!data.lastAssignedAt) {
+              updateDoc(userRef, { lastAssignedAt: serverTimestamp() }).catch(console.error);
             }
           } else {
-            // If user doc doesn't exist yet, they are likely a new signup
-            // The AuthScreen handles creation, but there might be a delay
-            setUserRole('agent');
+            setUserData(null);
           }
           setIsRoleLoading(false);
         }, (error) => {
@@ -201,8 +208,7 @@ export default function App() {
 
     // Process with Gemini
     try {
-      const userDoc = await getDoc(doc(db, 'users', user!.uid));
-      const userApiKey = userDoc.exists() ? userDoc.data().geminiApiKey : undefined;
+      const userApiKey = userData?.geminiApiKey;
 
       // START TYPING STATUS
       setTyping(msg.chatId || leadId, 'composing');
@@ -238,45 +244,13 @@ export default function App() {
 
       // HUMAN AGENT DISTRIBUTION
       if (result.status === 'humano' && currentLeadData.status !== 'humano') {
-        const usersRef = collection(db, 'users');
-        const q = query(usersRef, orderBy('lastAssignedAt', 'asc'), limit(10));
-        const usersSnap = await getDocs(q);
-        const availableAgents = usersSnap.docs
-          .map(doc => ({ id: doc.id, ...doc.data() }))
-          .filter((a: any) => a.active && a.role === 'agent');
-
-        if (availableAgents.length > 0) {
-          const selectedAgent: any = availableAgents[0];
-          
-          // Assign lead to agent in system
-          await updateDoc(leadRef, {
-            assignedTo: selectedAgent.id
-          });
-
-          // Notify the agent (if they have a phone registered)
-          if (selectedAgent.phone) {
-            const agentMsg = `🚨 *NOVO LEAD QUALIFICADO*\n\nO robô identificou que o cliente *${currentLeadData.name}* precisa de atendimento humano.\n\n*Score:* ${result.leadScore}\n*BANT:* ${Object.entries(updateData.bant).filter(([_, v]) => v).map(([k]) => k.toUpperCase()).join(', ')}\n\nPor favor, acesse o painel para assumir o atendimento.`;
-            
-            await fetch('/api/whatsapp/send', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ 
-                to: selectedAgent.phone, 
-                message: agentMsg,
-                contact: {
-                  name: currentLeadData.name,
-                  phone: msg.from 
-                }
-              })
-            });
-          }
-
-          // Update agent last assigned time
-          await updateDoc(doc(db, 'users', selectedAgent.id), {
-            lastAssignedAt: serverTimestamp()
-          });
-
-          toast.info(`Lead encaminhado para ${selectedAgent.displayName || selectedAgent.name}`);
+        const assignedAgent = await assignLeadToAgent(leadId, {
+          ...currentLeadData,
+          ...updateData
+        });
+        
+        if (assignedAgent) {
+          toast.info(`Lead encaminhado para ${assignedAgent.displayName || assignedAgent.name}`);
         }
       }
 

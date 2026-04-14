@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot, query, orderBy, limit, updateDoc, doc, deleteDoc, getDocs, writeBatch, serverTimestamp, getDoc, addDoc, where, Timestamp } from 'firebase/firestore';
+import React, { useState, useEffect, useMemo } from 'react';
+import { collection, onSnapshot, query, orderBy, limit, updateDoc, doc, deleteDoc, getDocs, writeBatch, serverTimestamp, addDoc, where, Timestamp } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Users, MessageSquare, TrendingUp, AlertCircle, ArrowUpRight, ArrowDownRight, RotateCcw, Play, CheckCircle2, UserCog, Trash2, Calendar, Copy } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -7,6 +7,7 @@ import { format, subHours, subDays, subWeeks, subMonths, startOfDay } from 'date
 import { ptBR } from 'date-fns/locale';
 import { formatPhoneNumber } from '../lib/utils';
 import { toast } from 'sonner';
+import { assignLeadToAgent } from '../services/assignmentService';
 
 interface DashboardProps {
   onSelectLead: (id: string) => void;
@@ -21,12 +22,6 @@ export default function Dashboard({ onSelectLead, userPhone, userRole, userId }:
   const [leads, setLeads] = useState<any[]>([]);
   const [agents, setAgents] = useState<any[]>([]);
   const [period, setPeriod] = useState<Period>('semana');
-  const [stats, setStats] = useState({
-    totalLeads: 0,
-    activeChats: 0,
-    closedChats: 0,
-    waitingHuman: 0
-  });
 
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
@@ -40,9 +35,8 @@ export default function Dashboard({ onSelectLead, userPhone, userRole, userId }:
     }
 
     try {
+      const leadData = leads.find(l => l.id === leadId);
       const leadRef = doc(db, 'leads', leadId);
-      const leadSnap = await getDoc(leadRef);
-      const leadData = leadSnap.data();
 
       const updateData: any = { 
         status: newStatus,
@@ -127,6 +121,16 @@ export default function Dashboard({ onSelectLead, userPhone, userRole, userId }:
         }
         
         updateData.lastMessage = humanMessage;
+
+        // DISTRIBUIÇÃO AUTOMÁTICA DE ATENDENTES
+        const assignedAgent = await assignLeadToAgent(leadId, {
+          ...leadData,
+          ...updateData
+        });
+
+        if (assignedAgent) {
+          toast.info(`Lead encaminhado para ${assignedAgent.displayName || assignedAgent.name}`);
+        }
       }
 
       await updateDoc(leadRef, updateData);
@@ -181,7 +185,8 @@ export default function Dashboard({ onSelectLead, userPhone, userRole, userId }:
     let q = query(
       collection(db, 'leads'), 
       where('updatedAt', '>=', Timestamp.fromDate(startDate)),
-      orderBy('updatedAt', 'desc')
+      orderBy('updatedAt', 'desc'),
+      limit(50)
     );
 
     // If agent, only show assigned leads
@@ -190,34 +195,36 @@ export default function Dashboard({ onSelectLead, userPhone, userRole, userId }:
         collection(db, 'leads'),
         where('assignedTo', '==', userId),
         where('updatedAt', '>=', Timestamp.fromDate(startDate)),
-        orderBy('updatedAt', 'desc')
+        orderBy('updatedAt', 'desc'),
+        limit(50)
       );
     }
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const leadsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setLeads(leadsData);
-      
-      // Calculate stats
-      const total = snapshot.size;
-      const waiting = leadsData.filter((l: any) => l.status === 'humano').length;
-      const closed = leadsData.filter((l: any) => l.status === 'fechamento' || l.status === 'pagamento').length;
-      const active = leadsData.filter((l: any) => 
-        l.status !== 'novo' && 
-        l.status !== 'fechamento' && 
-        l.status !== 'pagamento'
-      ).length;
-
-      setStats({
-        totalLeads: total,
-        activeChats: active,
-        closedChats: closed,
-        waitingHuman: waiting
-      });
     });
 
     return () => unsubscribe();
   }, [period, userRole, userId]);
+
+  const stats = useMemo(() => {
+    const total = leads.length;
+    const waiting = leads.filter((l: any) => l.status === 'humano').length;
+    const closed = leads.filter((l: any) => l.status === 'fechamento' || l.status === 'pagamento').length;
+    const active = leads.filter((l: any) => 
+      l.status !== 'novo' && 
+      l.status !== 'fechamento' && 
+      l.status !== 'pagamento'
+    ).length;
+
+    return {
+      totalLeads: total,
+      activeChats: active,
+      closedChats: closed,
+      waitingHuman: waiting
+    };
+  }, [leads]);
 
   useEffect(() => {
     if (userRole === 'admin') {

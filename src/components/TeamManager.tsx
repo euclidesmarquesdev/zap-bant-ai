@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { collection, onSnapshot, deleteDoc, doc, updateDoc, query, orderBy, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '../firebase';
+import { db, adminEmail } from '../firebase';
 import { Trash2, Phone, User, CheckCircle2, XCircle, Loader2, Shield, UserCog, UserPlus, Copy, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatPhoneNumber } from '../lib/utils';
@@ -15,7 +15,7 @@ export default function TeamManager({ currentUserEmail }: TeamManagerProps) {
   const [showAddForm, setShowAddForm] = useState(false);
   const [newUser, setNewUser] = useState({ email: '', name: '', phone: '', role: 'agent' as 'admin' | 'agent' });
   const [isAdding, setIsAdding] = useState(false);
-  const PRIMARY_ADMIN_EMAIL = "euclidesmarques.dev@gmail.com";
+  const PRIMARY_ADMIN_EMAIL = adminEmail;
   const APP_URL = window.location.origin;
 
   useEffect(() => {
@@ -42,6 +42,7 @@ export default function TeamManager({ currentUserEmail }: TeamManagerProps) {
         role: newUser.role,
         active: true,
         invited: true,
+        lastAssignedAt: serverTimestamp(),
         createdAt: serverTimestamp()
       });
       

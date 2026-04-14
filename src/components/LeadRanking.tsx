@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot, query, orderBy, where } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, where, limit } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Trophy, Star, TrendingUp, Filter, Download } from 'lucide-react';
 import { motion } from 'motion/react';
@@ -16,13 +16,14 @@ export default function LeadRanking({ userRole, userId }: LeadRankingProps) {
   useEffect(() => {
     if (!userRole || !userId) return;
 
-    let q = query(collection(db, 'leads'), orderBy('score', 'desc'));
+    let q = query(collection(db, 'leads'), orderBy('score', 'desc'), limit(50));
     
     if (userRole === 'agent' && userId) {
       q = query(
         collection(db, 'leads'),
         where('assignedTo', '==', userId),
-        orderBy('score', 'desc')
+        orderBy('score', 'desc'),
+        limit(50)
       );
     }
 

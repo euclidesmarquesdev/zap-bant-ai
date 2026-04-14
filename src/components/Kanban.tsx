@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot, query, orderBy, doc, updateDoc, serverTimestamp, addDoc, getDoc, where } from 'firebase/firestore';
+import React, { useState, useEffect, useMemo } from 'react';
+import { collection, onSnapshot, query, orderBy, doc, updateDoc, serverTimestamp, addDoc, where, limit } from 'firebase/firestore';
 import { db } from '../firebase';
 import { StatusBadge } from './Dashboard';
 import { motion } from 'motion/react';
@@ -7,6 +7,7 @@ import { MoreVertical, Phone, Star } from 'lucide-react';
 import { formatPhoneNumber } from '../lib/utils';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { toast } from 'sonner';
+import { assignLeadToAgent } from '../services/assignmentService';
 
 const COLUMNS = [
   { id: 'novo', title: 'Novo Atendimento' },
@@ -29,12 +30,18 @@ export default function Kanban({ userPhone, userRole, userId }: KanbanProps) {
   useEffect(() => {
     if (!userRole || !userId) return;
 
-    let q = query(collection(db, 'leads'));
+    let q = query(
+      collection(db, 'leads'),
+      orderBy('updatedAt', 'desc'),
+      limit(100)
+    );
     
     if (userRole === 'agent' && userId) {
       q = query(
         collection(db, 'leads'),
-        where('assignedTo', '==', userId)
+        where('assignedTo', '==', userId),
+        orderBy('updatedAt', 'desc'),
+        limit(100)
       );
     }
 
@@ -43,6 +50,17 @@ export default function Kanban({ userPhone, userRole, userId }: KanbanProps) {
     });
     return () => unsubscribe();
   }, [userRole, userId]);
+
+  const leadsByStatus = useMemo(() => {
+    const map: Record<string, any[]> = {};
+    COLUMNS.forEach(col => map[col.id] = []);
+    leads.forEach(lead => {
+      if (map[lead.status]) {
+        map[lead.status].push(lead);
+      }
+    });
+    return map;
+  }, [leads]);
 
   const onDragEnd = async (result: any) => {
     const { destination, source, draggableId } = result;
@@ -53,9 +71,8 @@ export default function Kanban({ userPhone, userRole, userId }: KanbanProps) {
     const newStatus = destination.droppableId;
 
     try {
+      const leadData = leads.find(l => l.id === draggableId);
       const leadRef = doc(db, 'leads', draggableId);
-      const leadSnap = await getDoc(leadRef);
-      const leadData = leadSnap.data();
 
       const updateData: any = {
         status: newStatus,
@@ -118,6 +135,16 @@ export default function Kanban({ userPhone, userRole, userId }: KanbanProps) {
         }
         
         updateData.lastMessage = humanMessage;
+
+        // DISTRIBUIÇÃO AUTOMÁTICA DE ATENDENTES
+        const assignedAgent = await assignLeadToAgent(draggableId, {
+          ...leadData,
+          ...updateData
+        });
+
+        if (assignedAgent) {
+          toast.info(`Lead encaminhado para ${assignedAgent.displayName || assignedAgent.name}`);
+        }
       }
 
       await updateDoc(leadRef, updateData);
@@ -136,19 +163,16 @@ export default function Kanban({ userPhone, userRole, userId }: KanbanProps) {
       </div>
 
       <DragDropContext onDragEnd={onDragEnd}>
-        <div className="flex-1 flex gap-6 overflow-x-auto pb-6">
+        <div className="flex-1 flex gap-6 overflow-x-auto pb-6 min-h-0">
           {COLUMNS.map((column) => (
-            <div key={column.id} className="flex-shrink-0 w-80 flex flex-col gap-4">
-              <div className="flex items-center justify-between px-2">
+            <div key={column.id} className="flex-shrink-0 w-80 flex flex-col gap-4 h-full">
+              <div className="flex items-center justify-between px-2 shrink-0">
                 <div className="flex items-center gap-2">
                   <h3 className="font-bold text-slate-700">{column.title}</h3>
                   <span className="bg-slate-200 text-slate-600 text-xs px-2 py-0.5 rounded-full font-bold">
-                    {leads.filter(l => l.status === column.id).length}
+                    {leadsByStatus[column.id]?.length || 0}
                   </span>
                 </div>
-                <button className="text-slate-400 hover:text-slate-600">
-                  <MoreVertical className="w-5 h-5" />
-                </button>
               </div>
 
               <Droppable droppableId={column.id}>
@@ -156,13 +180,11 @@ export default function Kanban({ userPhone, userRole, userId }: KanbanProps) {
                   <div 
                     {...provided.droppableProps}
                     ref={provided.innerRef}
-                    className={`flex-1 rounded-2xl p-3 space-y-3 min-h-[500px] transition-colors ${
-                      snapshot.isDraggingOver ? 'bg-blue-50/50' : 'bg-slate-100/50'
+                    className={`flex-1 rounded-2xl p-3 space-y-3 min-h-[500px] overflow-y-auto transition-colors ${
+                      snapshot.isDraggingOver ? 'bg-blue-50/50 ring-2 ring-blue-200 ring-inset' : 'bg-slate-100/50'
                     }`}
                   >
-                    {leads
-                      .filter(l => l.status === column.id)
-                      .map((lead, index) => {
+                    {leadsByStatus[column.id]?.map((lead, index) => {
                         const DraggableAny = Draggable as any;
                         return (
                           <DraggableAny key={lead.id} draggableId={lead.id} index={index}>
@@ -193,10 +215,9 @@ export default function Kanban({ userPhone, userRole, userId }: KanbanProps) {
 
 function KanbanCard({ lead, isDragging }: { lead: any, isDragging?: boolean }) {
   return (
-    <motion.div 
-      layoutId={lead.id}
+    <div 
       className={`bg-white p-4 rounded-xl shadow-sm border transition-all cursor-grab active:cursor-grabbing ${
-        isDragging ? 'border-blue-500 shadow-lg scale-105' : 'border-slate-200 hover:border-blue-300'
+        isDragging ? 'border-blue-500 shadow-lg scale-105 ring-4 ring-blue-500/10' : 'border-slate-200 hover:border-blue-300'
       }`}
     >
       <div className="flex justify-between items-start mb-3">
@@ -256,6 +277,6 @@ function KanbanCard({ lead, isDragging }: { lead: any, isDragging?: boolean }) {
           ></div>
         </div>
       </div>
-    </motion.div>
+    </div>
   );
 }

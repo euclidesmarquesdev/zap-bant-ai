@@ -12,4 +12,5 @@ const app = isValidConfig
 export const auth = app ? getAuth(app) : null as any;
 export const db = app ? getFirestore(app, firebaseConfig.firestoreDatabaseId) : null as any;
 export const googleProvider = new GoogleAuthProvider();
+export const adminEmail = (firebaseConfig as any)?.adminEmail || "euclidesmarques.dev@gmail.com";
 export { isValidConfig };
