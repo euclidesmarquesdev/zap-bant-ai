@@ -12,8 +12,15 @@ service cloud.firestore {
 
     function isAdmin() {
       return isAuthenticated() && 
-        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' || 
-         request.auth.token.email == "euclidesmarques.dev@gmail.com");
+        (request.auth.token.email == "euclidesmarques.dev@gmail.com" ||
+         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'));
+    }
+
+    function isAgent() {
+      return isAuthenticated() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'agent';
     }
 
     match /users/{userId} {
@@ -22,11 +29,11 @@ service cloud.firestore {
     }
 
     match /leads/{leadId} {
-      allow read: if isAuthenticated();
+      allow read: if isAdmin() || (isAgent() && resource.data.assignedTo == request.auth.uid);
       allow write: if isAuthenticated(); // AI Agent and Dashboard need to write
       
       match /messages/{messageId} {
-        allow read: if isAuthenticated();
+        allow read: if isAdmin() || (isAgent() && get(/databases/$(database)/documents/leads/$(leadId)).data.assignedTo == request.auth.uid);
         allow write: if isAuthenticated();
       }
     }
@@ -37,6 +44,11 @@ service cloud.firestore {
     }
 
     match /settings/{settingId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    match /human_agents/{agentId} {
       allow read: if isAuthenticated();
       allow write: if isAuthenticated();
     }

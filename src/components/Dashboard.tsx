@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { collection, onSnapshot, query, orderBy, limit, updateDoc, doc, deleteDoc, getDocs, writeBatch, serverTimestamp, getDoc, addDoc, where, Timestamp } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Users, MessageSquare, TrendingUp, AlertCircle, ArrowUpRight, ArrowDownRight, RotateCcw, Play, CheckCircle2, UserCog, Trash2, Calendar } from 'lucide-react';
+import { Users, MessageSquare, TrendingUp, AlertCircle, ArrowUpRight, ArrowDownRight, RotateCcw, Play, CheckCircle2, UserCog, Trash2, Calendar, Copy } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { format, subHours, subDays, subWeeks, subMonths, startOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -11,12 +11,15 @@ import { toast } from 'sonner';
 interface DashboardProps {
   onSelectLead: (id: string) => void;
   userPhone?: string;
+  userRole?: 'admin' | 'agent' | null;
+  userId?: string;
 }
 
 type Period = 'hoje' | '48h' | 'semana' | 'mes';
 
-export default function Dashboard({ onSelectLead, userPhone }: DashboardProps) {
+export default function Dashboard({ onSelectLead, userPhone, userRole, userId }: DashboardProps) {
   const [leads, setLeads] = useState<any[]>([]);
+  const [agents, setAgents] = useState<any[]>([]);
   const [period, setPeriod] = useState<Period>('semana');
   const [stats, setStats] = useState({
     totalLeads: 0,
@@ -153,6 +156,8 @@ export default function Dashboard({ onSelectLead, userPhone }: DashboardProps) {
   };
 
   useEffect(() => {
+    if (!userRole || !userId) return;
+
     let startDate: Date;
     const now = new Date();
 
@@ -173,11 +178,21 @@ export default function Dashboard({ onSelectLead, userPhone }: DashboardProps) {
         startDate = subWeeks(now, 1);
     }
 
-    const q = query(
+    let q = query(
       collection(db, 'leads'), 
       where('updatedAt', '>=', Timestamp.fromDate(startDate)),
       orderBy('updatedAt', 'desc')
     );
+
+    // If agent, only show assigned leads
+    if (userRole === 'agent' && userId) {
+      q = query(
+        collection(db, 'leads'),
+        where('assignedTo', '==', userId),
+        where('updatedAt', '>=', Timestamp.fromDate(startDate)),
+        orderBy('updatedAt', 'desc')
+      );
+    }
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const leadsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -202,7 +217,16 @@ export default function Dashboard({ onSelectLead, userPhone }: DashboardProps) {
     });
 
     return () => unsubscribe();
-  }, [period]);
+  }, [period, userRole, userId]);
+
+  useEffect(() => {
+    if (userRole === 'admin') {
+      const unsubscribe = onSnapshot(collection(db, 'users'), (snap) => {
+        setAgents(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      });
+      return () => unsubscribe();
+    }
+  }, [userRole]);
 
   return (
     <div className="space-y-8">
@@ -230,6 +254,27 @@ export default function Dashboard({ onSelectLead, userPhone }: DashboardProps) {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        {userRole === 'admin' && (
+          <div className="md:col-span-2 lg:col-span-4 bg-blue-600 rounded-3xl p-6 text-white shadow-xl shadow-blue-200 flex flex-col md:flex-row items-center justify-between gap-6 overflow-hidden relative group">
+            <div className="absolute top-0 right-0 -mr-16 -mt-16 w-64 h-64 bg-white/10 rounded-full blur-3xl group-hover:bg-white/20 transition-all duration-500"></div>
+            <div className="relative z-10">
+              <h2 className="text-xl font-bold mb-1">Central de Atendimento Ativa</h2>
+              <p className="text-blue-100 text-sm">Compartilhe o link abaixo com sua equipe para que eles possam logar e atender os leads.</p>
+            </div>
+            <div className="relative z-10 flex items-center gap-3 bg-white/10 backdrop-blur-md p-2 pl-4 rounded-2xl border border-white/20 w-full md:w-auto">
+              <code className="text-sm font-mono font-bold truncate max-w-[200px] md:max-w-none">{window.location.origin}</code>
+              <button 
+                onClick={() => {
+                  navigator.clipboard.writeText(window.location.origin);
+                  toast.success('Link copiado!');
+                }}
+                className="p-2 bg-white text-blue-600 rounded-xl hover:bg-blue-50 transition-all shadow-lg"
+              >
+                <Copy className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
         <KPICard 
           title="Total de Leads" 
           value={stats.totalLeads} 
@@ -276,6 +321,7 @@ export default function Dashboard({ onSelectLead, userPhone }: DashboardProps) {
               <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider">
                 <th className="px-6 py-4 font-semibold">Cliente</th>
                 <th className="px-6 py-4 font-semibold">Status</th>
+                {userRole === 'admin' && <th className="px-6 py-4 font-semibold">Atendente</th>}
                 <th className="px-6 py-4 font-semibold">Score</th>
                 <th className="px-6 py-4 font-semibold">BANT</th>
                 <th className="px-6 py-4 font-semibold">Última Atividade</th>
@@ -283,40 +329,58 @@ export default function Dashboard({ onSelectLead, userPhone }: DashboardProps) {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {leads.map((lead) => (
-                <tr key={lead.id} className="hover:bg-slate-50 transition-all cursor-pointer" onClick={() => onSelectLead(lead.id)}>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center text-slate-600 font-bold overflow-hidden border border-slate-200">
-                        {lead.photoUrl ? (
-                          <img src={lead.photoUrl} alt={lead.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                        ) : (
-                          lead.name ? lead.name[0] : '?'
-                        )}
-                      </div>
-                      <div>
-                        <p className="font-semibold text-slate-900">
-                          {lead.name === 'Cliente WhatsApp' && lead.phone?.length <= 15 
-                            ? formatPhoneNumber(lead.phone) 
-                            : lead.name || 'Cliente s/ Nome'}
-                        </p>
-                        <p className="text-xs text-slate-500 font-mono tracking-wider">
-                          {lead.phone?.length > 15 ? (
-                            <span className="text-blue-500 flex items-center gap-1">
-                              <RotateCcw className="w-3 h-3 animate-spin" />
-                              Mapeando Telefone...
-                            </span>
+              {leads.map((lead) => {
+                const assignedAgent = agents.find(a => a.id === lead.assignedTo);
+                return (
+                  <tr key={lead.id} className="hover:bg-slate-50 transition-all cursor-pointer" onClick={() => onSelectLead(lead.id)}>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center text-slate-600 font-bold overflow-hidden border border-slate-200">
+                          {lead.photoUrl ? (
+                            <img src={lead.photoUrl} alt={lead.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                           ) : (
-                            lead.name === 'Cliente WhatsApp' ? 'WhatsApp' : formatPhoneNumber(lead.phone || lead.id)
+                            lead.name ? lead.name[0] : '?'
                           )}
-                        </p>
+                        </div>
+                        <div>
+                          <p className="font-semibold text-slate-900">
+                            {lead.name === 'Cliente WhatsApp' && lead.phone?.length <= 15 
+                              ? formatPhoneNumber(lead.phone) 
+                              : lead.name || 'Cliente s/ Nome'}
+                          </p>
+                          <p className="text-xs text-slate-500 font-mono tracking-wider">
+                            {lead.phone?.length > 15 ? (
+                              <span className="text-blue-500 flex items-center gap-1">
+                                <RotateCcw className="w-3 h-3 animate-spin" />
+                                Mapeando Telefone...
+                              </span>
+                            ) : (
+                              lead.name === 'Cliente WhatsApp' ? 'WhatsApp' : formatPhoneNumber(lead.phone || lead.id)
+                            )}
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <StatusBadge status={lead.status} />
-                  </td>
-                  <td className="px-6 py-4">
+                    </td>
+                    <td className="px-6 py-4">
+                      <StatusBadge status={lead.status} />
+                    </td>
+                    {userRole === 'admin' && (
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          {assignedAgent ? (
+                            <div className="flex items-center gap-2">
+                              <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center text-[10px] font-bold text-blue-600">
+                                {assignedAgent.displayName?.[0] || assignedAgent.email?.[0]}
+                              </div>
+                              <span className="text-xs font-medium text-slate-700">{assignedAgent.displayName || assignedAgent.email}</span>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-slate-400 italic">Não atribuído</span>
+                          )}
+                        </div>
+                      </td>
+                    )}
+                    <td className="px-6 py-4">
                     <div className="flex items-center gap-2">
                       <div className="w-12 bg-slate-100 h-2 rounded-full overflow-hidden">
                         <div 
@@ -386,8 +450,9 @@ export default function Dashboard({ onSelectLead, userPhone }: DashboardProps) {
                     </div>
                   </td>
                 </tr>
-              ))}
-            </tbody>
+              );
+            })}
+          </tbody>
           </table>
         </div>
       </div>

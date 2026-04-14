@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot, query, orderBy, doc, updateDoc, serverTimestamp, addDoc, getDoc } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, doc, updateDoc, serverTimestamp, addDoc, getDoc, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import { StatusBadge } from './Dashboard';
 import { motion } from 'motion/react';
@@ -19,17 +19,30 @@ const COLUMNS = [
 
 interface KanbanProps {
   userPhone?: string;
+  userRole?: 'admin' | 'agent' | null;
+  userId?: string;
 }
 
-export default function Kanban({ userPhone }: KanbanProps) {
+export default function Kanban({ userPhone, userRole, userId }: KanbanProps) {
   const [leads, setLeads] = useState<any[]>([]);
 
   useEffect(() => {
-    const unsubscribe = onSnapshot(collection(db, 'leads'), (snapshot) => {
+    if (!userRole || !userId) return;
+
+    let q = query(collection(db, 'leads'));
+    
+    if (userRole === 'agent' && userId) {
+      q = query(
+        collection(db, 'leads'),
+        where('assignedTo', '==', userId)
+      );
+    }
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
       setLeads(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
     return () => unsubscribe();
-  }, []);
+  }, [userRole, userId]);
 
   const onDragEnd = async (result: any) => {
     const { destination, source, draggableId } = result;

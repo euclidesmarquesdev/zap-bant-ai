@@ -8,7 +8,10 @@
         "uid": { "type": "string" },
         "email": { "type": "string" },
         "displayName": { "type": "string" },
-        "role": { "type": "string", "enum": ["admin", "agent"] }
+        "phone": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "agent"] },
+        "active": { "type": "boolean" },
+        "lastAssignedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["uid", "email"]
     },
@@ -22,6 +25,7 @@
         "phone": { "type": "string" },
         "status": { "type": "string", "enum": ["novo", "atendido", "negociacao", "fechamento", "pagamento", "humano"] },
         "score": { "type": "number" },
+        "assignedTo": { "type": "string", "description": "UID do atendente responsável" },
         "bant": {
           "type": "object",
           "properties": {
@@ -60,6 +64,30 @@
         "isActive": { "type": "boolean" }
       },
       "required": ["id", "name"]
+    },
+    "HumanAgent": {
+      "title": "HumanAgent",
+      "description": "Atendentes humanos para transbordo",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "phone": { "type": "string" },
+        "lastAssignedAt": { "type": "string", "format": "date-time" },
+        "active": { "type": "boolean" }
+      },
+      "required": ["name", "phone"]
+    },
+    "WelcomeConfig": {
+      "title": "WelcomeConfig",
+      "description": "Configuração da mensagem de boas-vindas",
+      "type": "object",
+      "properties": {
+        "text": { "type": "string" },
+        "mediaUrl": { "type": "string" },
+        "mediaType": { "type": "string", "enum": ["none", "image", "video", "document"] },
+        "fileName": { "type": "string" }
+      }
     }
   },
   "firestore": {
@@ -78,6 +106,14 @@
     "/agents/{agentId}": {
       "schema": "AgentModel",
       "description": "Coleção de modelos de agentes configuráveis"
+    },
+    "/human_agents/{agentId}": {
+      "schema": "HumanAgent",
+      "description": "Coleção de atendentes humanos"
+    },
+    "/settings/welcome": {
+      "schema": "WelcomeConfig",
+      "description": "Configuração da mensagem de boas-vindas"
     }
   }
 }

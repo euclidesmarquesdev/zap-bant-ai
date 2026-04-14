@@ -6,6 +6,7 @@ interface SidebarProps {
   activeTab: string;
   setActiveTab: (tab: string) => void;
   userPhone?: string;
+  userRole?: 'admin' | 'agent' | null;
 }
 
 const menuItems = [
@@ -13,11 +14,14 @@ const menuItems = [
   { id: 'kanban', label: 'BANT Kanban', icon: KanbanIcon },
   { id: 'chat', label: 'Conversas', icon: MessageSquare },
   { id: 'ranking', label: 'Ranking de Leads', icon: BarChart3 },
-  { id: 'agents', label: 'Agentes IA', icon: Bot },
-  { id: 'whatsapp', label: 'WhatsApp', icon: QrCode },
+  { id: 'agents', label: 'Agentes IA', icon: Bot, adminOnly: true },
+  { id: 'human_agents', label: 'Gerenciar Equipe', icon: Users, adminOnly: true },
+  { id: 'whatsapp', label: 'WhatsApp', icon: QrCode, adminOnly: true },
 ];
 
-export default function Sidebar({ activeTab, setActiveTab, userPhone }: SidebarProps) {
+export default function Sidebar({ activeTab, setActiveTab, userPhone, userRole }: SidebarProps) {
+  const filteredItems = menuItems.filter(item => !item.adminOnly || userRole === 'admin');
+
   return (
     <aside className="w-64 bg-white border-r border-slate-200 flex flex-col">
       <div className="p-6 flex flex-col gap-1">
@@ -25,8 +29,8 @@ export default function Sidebar({ activeTab, setActiveTab, userPhone }: SidebarP
           <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-100">
             <Bot className="text-white w-6 h-6" />
           </div>
-          <div className="flex flex-col">
-            <span className="font-bold text-lg text-slate-900 tracking-tight leading-none">
+          <div className="flex flex-col overflow-hidden">
+            <span className="font-bold text-lg text-slate-900 tracking-tight leading-none truncate">
               {userPhone ? `+${userPhone}` : 'BANT Agent'}
             </span>
             {userPhone && <span className="text-[10px] text-green-600 font-bold uppercase tracking-widest mt-0.5">Conectado</span>}
@@ -35,7 +39,7 @@ export default function Sidebar({ activeTab, setActiveTab, userPhone }: SidebarP
       </div>
       
       <nav className="flex-1 px-4 py-4 space-y-1">
-        {menuItems.map((item) => (
+        {filteredItems.map((item) => (
           <button
             key={item.id}
             onClick={() => setActiveTab(item.id)}

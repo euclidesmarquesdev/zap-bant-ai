@@ -7,9 +7,10 @@ import { toast } from 'sonner';
 interface HeaderProps {
   user: User;
   userPhone?: string;
+  userRole?: 'admin' | 'agent' | null;
 }
 
-export default function Header({ user, userPhone }: HeaderProps) {
+export default function Header({ user, userPhone, userRole }: HeaderProps) {
   return (
     <header className="h-20 bg-white border-bottom border-slate-200 px-8 flex items-center justify-between">
       <div className="flex-1 max-w-xl">
@@ -31,13 +32,13 @@ export default function Header({ user, userPhone }: HeaderProps) {
         
         <div className="flex items-center gap-3 pl-6 border-l border-slate-200">
           <div className="text-right">
-            <p className="text-sm font-semibold text-slate-900">{user.displayName}</p>
+            <p className="text-sm font-semibold text-slate-900">{user.displayName || user.email}</p>
             <p className="text-xs font-medium text-blue-600">
-              {userPhone ? `📱 +${userPhone}` : 'Administrador'}
+              {userRole === 'admin' ? 'Administrador' : 'Atendente'}
             </p>
           </div>
           <img 
-            src={user.photoURL || `https://ui-avatars.com/api/?name=${user.displayName}`} 
+            src={user.photoURL || `https://ui-avatars.com/api/?name=${user.displayName || user.email}`} 
             className="w-10 h-10 rounded-full border-2 border-slate-100"
             alt={user.displayName || 'User'}
           />
@@ -52,7 +53,7 @@ export default function Header({ user, userPhone }: HeaderProps) {
               }
             }}
             className="p-2 text-slate-400 hover:text-red-500 transition-all"
-            title="Sair da conta Google"
+            title="Sair da conta"
           >
             <LogOut className="w-5 h-5" />
           </button>

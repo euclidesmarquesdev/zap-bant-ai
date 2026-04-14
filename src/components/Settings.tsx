@@ -21,9 +21,10 @@ import { toast } from 'sonner';
 
 interface SettingsProps {
   user: User;
+  userRole?: 'admin' | 'agent' | null;
 }
 
-export default function Settings({ user }: SettingsProps) {
+export default function Settings({ user, userRole }: SettingsProps) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [savingFirebase, setSavingFirebase] = useState(false);
@@ -43,6 +44,7 @@ export default function Settings({ user }: SettingsProps) {
     autoResponse: true,
     displayName: user.displayName || '',
     email: user.email || '',
+    phone: '',
   });
 
   useEffect(() => {
@@ -69,13 +71,16 @@ export default function Settings({ user }: SettingsProps) {
             notificationsEnabled: data.notificationsEnabled ?? true,
             autoResponse: data.autoResponse ?? true,
             displayName: data.displayName || user.displayName || '',
+            phone: data.phone || '',
           }));
         }
 
-        // Load Firebase Config
-        const res = await fetch('/api/config');
-        const fbData = await res.json();
-        if (isMounted && fbData) setFbConfig(fbData);
+        // Load Firebase Config (Admin only)
+        if (userRole === 'admin') {
+          const res = await fetch('/api/config');
+          const fbData = await res.json();
+          if (isMounted && fbData) setFbConfig(fbData);
+        }
       } catch (error) {
         console.error('Erro ao carregar configurações:', error);
         if (isMounted) toast.error('Erro ao carregar suas configurações. Verifique o Firebase.');
@@ -92,7 +97,7 @@ export default function Settings({ user }: SettingsProps) {
       isMounted = false;
       clearTimeout(timeoutId);
     };
-  }, [user]);
+  }, [user, userRole]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -173,108 +178,122 @@ export default function Settings({ user }: SettingsProps) {
                   className="w-full px-4 py-3 bg-slate-100 border border-slate-200 rounded-xl text-sm text-slate-500 cursor-not-allowed"
                 />
               </div>
+              <div className="space-y-2">
+                <label className="text-sm font-bold text-slate-700 ml-1">Telefone (para notificações WhatsApp)</label>
+                <input 
+                  type="text" 
+                  value={settings.phone}
+                  onChange={e => setSettings({...settings, phone: e.target.value})}
+                  placeholder="5511999999999"
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
+                />
+              </div>
             </div>
           </section>
 
-          {/* Seção de Firebase (Instalação) */}
-          <section className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm space-y-6">
-            <div className="flex items-center gap-4 mb-2">
-              <div className="w-12 h-12 bg-amber-50 rounded-2xl flex items-center justify-center text-amber-600">
-                <Shield className="w-6 h-6" />
+          {/* Seção de Firebase (Instalação) - Admin Only */}
+          {userRole === 'admin' && (
+            <section className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm space-y-6">
+              <div className="flex items-center gap-4 mb-2">
+                <div className="w-12 h-12 bg-amber-50 rounded-2xl flex items-center justify-center text-amber-600">
+                  <Shield className="w-6 h-6" />
+                </div>
+                <h3 className="text-lg font-bold text-slate-900">Infraestrutura Firebase</h3>
               </div>
-              <h3 className="text-lg font-bold text-slate-900">Infraestrutura Firebase</h3>
-            </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-500 uppercase">API Key</label>
-                <input 
-                  type="text" 
-                  value={fbConfig.apiKey}
-                  onChange={e => setFbConfig({...fbConfig, apiKey: e.target.value})}
-                  className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-500 uppercase">API Key</label>
+                  <input 
+                    type="text" 
+                    value={fbConfig.apiKey}
+                    onChange={e => setFbConfig({...fbConfig, apiKey: e.target.value})}
+                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-500 uppercase">Project ID</label>
+                  <input 
+                    type="text" 
+                    value={fbConfig.projectId}
+                    onChange={e => setFbConfig({...fbConfig, projectId: e.target.value})}
+                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-500 uppercase">Auth Domain</label>
+                  <input 
+                    type="text" 
+                    value={fbConfig.authDomain}
+                    onChange={e => setFbConfig({...fbConfig, authDomain: e.target.value})}
+                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-500 uppercase">Firestore DB ID</label>
+                  <input 
+                    type="text" 
+                    value={fbConfig.firestoreDatabaseId}
+                    onChange={e => setFbConfig({...fbConfig, firestoreDatabaseId: e.target.value})}
+                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                  />
+                </div>
               </div>
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-500 uppercase">Project ID</label>
-                <input 
-                  type="text" 
-                  value={fbConfig.projectId}
-                  onChange={e => setFbConfig({...fbConfig, projectId: e.target.value})}
-                  className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-500 uppercase">Auth Domain</label>
-                <input 
-                  type="text" 
-                  value={fbConfig.authDomain}
-                  onChange={e => setFbConfig({...fbConfig, authDomain: e.target.value})}
-                  className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-500 uppercase">Firestore DB ID</label>
-                <input 
-                  type="text" 
-                  value={fbConfig.firestoreDatabaseId}
-                  onChange={e => setFbConfig({...fbConfig, firestoreDatabaseId: e.target.value})}
-                  className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                />
-              </div>
-            </div>
 
-            <div className="flex justify-end">
-              <button 
-                onClick={handleSaveFirebase}
-                disabled={savingFirebase}
-                className="flex items-center gap-2 px-6 py-2 bg-amber-600 text-white text-xs font-bold rounded-xl hover:bg-amber-700 transition-all disabled:opacity-50"
-              >
-                {savingFirebase ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                Atualizar Firebase
-              </button>
-            </div>
-          </section>
-
-          {/* Seção de API Keys */}
-          <section className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm space-y-6">
-            <div className="flex items-center gap-4 mb-2">
-              <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-600">
-                <Key className="w-6 h-6" />
-              </div>
-              <h3 className="text-lg font-bold text-slate-900">Integração Gemini AI</h3>
-            </div>
-
-            <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100 flex gap-3">
-              <AlertCircle className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
-              <p className="text-xs text-blue-700 leading-relaxed">
-                Sua chave de API é armazenada de forma segura e usada apenas para processar as mensagens dos seus leads. 
-                Cada usuário utiliza sua própria cota da Google AI Studio.
-              </p>
-            </div>
-            
-            <div className="space-y-2">
-              <label className="text-sm font-bold text-slate-700 ml-1">Gemini API Key</label>
-              <div className="relative">
-                <input 
-                  type={showApiKey ? "text" : "password"}
-                  value={settings.geminiApiKey}
-                  onChange={e => setSettings({...settings, geminiApiKey: e.target.value})}
-                  placeholder="Insira sua chave AI_..."
-                  className="w-full pl-4 pr-12 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all font-mono"
-                />
+              <div className="flex justify-end">
                 <button 
-                  onClick={() => setShowApiKey(!showApiKey)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-all"
+                  onClick={handleSaveFirebase}
+                  disabled={savingFirebase}
+                  className="flex items-center gap-2 px-6 py-2 bg-amber-600 text-white text-xs font-bold rounded-xl hover:bg-amber-700 transition-all disabled:opacity-50"
                 >
-                  {showApiKey ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                  {savingFirebase ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                  Atualizar Firebase
                 </button>
               </div>
-              <p className="text-[10px] text-slate-400 ml-1">
-                Obtenha sua chave gratuitamente em <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">Google AI Studio</a>.
-              </p>
-            </div>
-          </section>
+            </section>
+          )}
+
+          {/* Seção de API Keys - Admin Only */}
+          {userRole === 'admin' && (
+            <section className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm space-y-6">
+              <div className="flex items-center gap-4 mb-2">
+                <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-600">
+                  <Key className="w-6 h-6" />
+                </div>
+                <h3 className="text-lg font-bold text-slate-900">Integração Gemini AI</h3>
+              </div>
+
+              <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100 flex gap-3">
+                <AlertCircle className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
+                <p className="text-xs text-blue-700 leading-relaxed">
+                  Sua chave de API é armazenada de forma segura e usada apenas para processar as mensagens dos seus leads. 
+                  Cada usuário utiliza sua própria cota da Google AI Studio.
+                </p>
+              </div>
+              
+              <div className="space-y-2">
+                <label className="text-sm font-bold text-slate-700 ml-1">Gemini API Key</label>
+                <div className="relative">
+                  <input 
+                    type={showApiKey ? "text" : "password"}
+                    value={settings.geminiApiKey}
+                    onChange={e => setSettings({...settings, geminiApiKey: e.target.value})}
+                    placeholder="Insira sua chave AI_..."
+                    className="w-full pl-4 pr-12 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all font-mono"
+                  />
+                  <button 
+                    onClick={() => setShowApiKey(!showApiKey)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-all"
+                  >
+                    {showApiKey ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                  </button>
+                </div>
+                <p className="text-[10px] text-slate-400 ml-1">
+                  Obtenha sua chave gratuitamente em <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">Google AI Studio</a>.
+                </p>
+              </div>
+            </section>
+          )}
 
           {/* Seção de Preferências do Agente */}
           <section className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm space-y-6">

@@ -255,6 +255,13 @@ async function startServer() {
         for (const msg of m.messages) {
           if (!msg.key.fromMe && msg.message) {
             const remoteJid = msg.key.remoteJid;
+            
+            // IGNORE GROUP MESSAGES
+            if (remoteJid?.endsWith('@g.us')) {
+              console.log('WhatsApp: Ignoring group message from', remoteJid);
+              continue;
+            }
+
             const participant = msg.key.participant;
             const pushName = msg.pushName || "";
 
@@ -345,23 +352,70 @@ async function startServer() {
   });
 
   app.post("/api/whatsapp/send", async (req, res) => {
-    let { to, message } = req.body;
+    let { to, message, mediaUrl, mediaType, fileName, contact } = req.body;
     if (!isReady || !sock) return res.status(400).json({ error: "WhatsApp not ready" });
     
     try {
-      // Ensure 'to' is a proper JID
+      // Ensure 'to' is a proper JID and handle LID mapping
       let targetJid = to;
+      
+      // If it's just a number, format it
       if (to && !to.includes('@')) {
-        targetJid = `${to}@s.whatsapp.net`;
+        targetJid = `${to.replace(/\D/g, '')}@s.whatsapp.net`;
+      } 
+      // If it's a LID, try to resolve it to a real JID
+      else if (to && to.includes('@lid')) {
+        const cleanLid = to.split('@')[0].split(':')[0];
+        if (lidMap.has(cleanLid)) {
+          const mappedJid = lidMap.get(cleanLid);
+          console.log(`WhatsApp: Resolving LID ${to} to JID ${mappedJid}@s.whatsapp.net`);
+          targetJid = `${mappedJid}@s.whatsapp.net`;
+        } else {
+          console.log(`WhatsApp: LID ${to} not found in map, sending to LID directly (might create ghost contact)`);
+        }
       }
       
-      console.log(`SENDING MANUAL MESSAGE TO ${targetJid}: ${message}`);
+      console.log(`SENDING MESSAGE TO ${targetJid}: ${message ? message.substring(0, 20) + '...' : ''} (Media: ${mediaType}, Contact: ${!!contact})`);
       
-      // Mostrar "Digitando..." antes de enviar manualmente também
+      // Mostrar "Digitando..." antes de enviar
       await sock.sendPresenceUpdate('composing', targetJid);
       await new Promise(resolve => setTimeout(resolve, 1000));
       
-      await sock.sendMessage(targetJid, { text: message });
+      if (contact) {
+        // Send Contact Card (vCard)
+        const cleanPhone = contact.phone.replace(/\D/g, '');
+        const vcard = 'BEGIN:VCARD\n' +
+                     'VERSION:3.0\n' +
+                     `FN:${contact.name}\n` +
+                     `TEL;type=CELL;type=VOICE;waid=${cleanPhone}:+${cleanPhone}\n` +
+                     'END:VCARD';
+        
+        await sock.sendMessage(targetJid, {
+          contacts: {
+            displayName: contact.name,
+            contacts: [{ vcard }]
+          }
+        });
+      }
+
+      if (mediaUrl && mediaType && mediaType !== 'none') {
+        const options: any = {};
+        if (mediaType === 'image') {
+          options.image = { url: mediaUrl };
+          options.caption = message;
+        } else if (mediaType === 'video') {
+          options.video = { url: mediaUrl };
+          options.caption = message;
+        } else if (mediaType === 'document') {
+          options.document = { url: mediaUrl };
+          options.mimetype = 'application/pdf'; 
+          options.fileName = fileName || 'documento.pdf';
+          options.caption = message;
+        }
+        await sock.sendMessage(targetJid, options);
+      } else if (message) {
+        await sock.sendMessage(targetJid, { text: message });
+      }
       
       await sock.sendPresenceUpdate('paused', targetJid);
       

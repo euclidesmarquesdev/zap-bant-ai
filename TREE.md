@@ -28,6 +28,7 @@ Abaixo está a descrição detalhada da árvore de diretórios e arquivos do sis
 *   `📄 WhatsAppConnector.tsx` — 📱 Interface para leitura de QR Code e status da conexão.
 *   `📄 Settings.tsx` — ⚙️ Configurações de perfil, API Gemini e Infraestrutura Firebase.
 *   `📄 SetupScreen.tsx` — 🪄 Assistente de instalação para novos clientes.
+*   `📄 HumanAgents.tsx` — 👥 Gestão de atendentes humanos e distribuição Round-Robin.
 *   `📄 LeadRanking.tsx` — 🏆 Lista de leads qualificados por score.
 
 #### 📁 src/services/ (Lógica de Negócio)

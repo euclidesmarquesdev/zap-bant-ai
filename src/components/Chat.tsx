@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { collection, onSnapshot, query, orderBy, addDoc, serverTimestamp, doc, getDoc } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, addDoc, serverTimestamp, doc, getDoc, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Send, User, Bot, Phone, MoreVertical, Search, ShieldCheck, MessageSquare } from 'lucide-react';
 import { format } from 'date-fns';
@@ -8,9 +8,11 @@ import { formatPhoneNumber, cn } from '../lib/utils';
 
 interface ChatProps {
   selectedLeadId: string | null;
+  userRole?: 'admin' | 'agent' | null;
+  userId?: string;
 }
 
-export default function Chat({ selectedLeadId }: ChatProps) {
+export default function Chat({ selectedLeadId, userRole, userId }: ChatProps) {
   const [leads, setLeads] = useState<any[]>([]);
   const [messages, setMessages] = useState<any[]>([]);
   const [activeLeadId, setActiveLeadId] = useState<string | null>(selectedLeadId);
@@ -18,12 +20,23 @@ export default function Chat({ selectedLeadId }: ChatProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const q = query(collection(db, 'leads'), orderBy('updatedAt', 'desc'));
+    if (!userRole || !userId) return;
+
+    let q = query(collection(db, 'leads'), orderBy('updatedAt', 'desc'));
+    
+    if (userRole === 'agent' && userId) {
+      q = query(
+        collection(db, 'leads'), 
+        where('assignedTo', '==', userId),
+        orderBy('updatedAt', 'desc')
+      );
+    }
+
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setLeads(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
     return () => unsubscribe();
-  }, []);
+  }, [userRole, userId]);
 
   useEffect(() => {
     if (activeLeadId) {

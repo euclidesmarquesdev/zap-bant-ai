@@ -14,12 +14,16 @@ import AgentManager from './components/AgentManager';
 import WhatsAppConnector from './components/WhatsAppConnector';
 import Settings from './components/Settings';
 import SetupScreen from './components/SetupScreen';
+import TeamManager from './components/TeamManager';
+import AuthScreen from './components/Auth/AuthScreen';
 import { LogIn, MessageSquare, LayoutDashboard, Users, Bot, BarChart3, Settings as SettingsIcon } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
+  const [userRole, setUserRole] = useState<'admin' | 'agent' | null>(null);
+  const [isRoleLoading, setIsRoleLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [trainingData, setTrainingData] = useState({ agentMd: '', shopMd: '' });
@@ -29,17 +33,37 @@ export default function App() {
     if (!isValidConfig || !auth) return;
 
     let unsubscribeConfig: (() => void) | null = null;
+    let unsubscribeUser: (() => void) | null = null;
 
     const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
       if (user) {
         setUser(user);
-        // Save user to firestore
-        await setDoc(doc(db, 'users', user.uid), {
-          uid: user.uid,
-          email: user.email,
-          displayName: user.displayName,
-          role: 'admin' // Default to admin for the first user
-        }, { merge: true });
+        
+        // Fetch user role and data
+        const userRef = doc(db, 'users', user.uid);
+        unsubscribeUser = onSnapshot(userRef, (snap) => {
+          if (snap.exists()) {
+            const data = snap.data();
+            // Primary admin always has admin role in UI
+            if (user.email === "euclidesmarques.dev@gmail.com") {
+              setUserRole('admin');
+              // Auto-fix if role was changed by mistake
+              if (data.role !== 'admin') {
+                updateDoc(userRef, { role: 'admin' }).catch(console.error);
+              }
+            } else {
+              setUserRole(data.role);
+            }
+          } else {
+            // If user doc doesn't exist yet, they are likely a new signup
+            // The AuthScreen handles creation, but there might be a delay
+            setUserRole('agent');
+          }
+          setIsRoleLoading(false);
+        }, (error) => {
+          console.error("Error fetching user role:", error);
+          setIsRoleLoading(false);
+        });
 
         // Real-time training data from Firestore
         const configRef = doc(db, 'settings', 'training');
@@ -91,11 +115,13 @@ export default function App() {
     let history: any[] = [];
     let currentLeadData: any = null;
 
+    // Create or update lead
     if (leadSnap.exists()) {
       currentLeadData = leadSnap.data();
       
       // Update phone if it was a LID and now we have a real number
-      if (msg.from !== leadId && currentLeadData.phone !== msg.from) {
+      // msg.from is the real number extracted by the server
+      if (msg.from && msg.from !== leadId && currentLeadData.phone !== msg.from) {
         console.log(`UPDATING LEAD ${leadId} PHONE TO ${msg.from}`);
         await updateDoc(leadRef, { 
           phone: msg.from,
@@ -118,7 +144,7 @@ export default function App() {
       // Create new lead
       currentLeadData = {
         id: leadId,
-        phone: msg.from, // Use the best available number (Phone or LID)
+        phone: msg.from, 
         chatId: msg.chatId || leadId,
         name: msg.pushName || 'Cliente WhatsApp',
         photoUrl: msg.profilePicUrl || '',
@@ -126,12 +152,39 @@ export default function App() {
         score: 0,
         bant: { budget: false, authority: false, need: false, timeline: false },
         lastMessage: msg.body,
-        updatedAt: new Date() // Use local date for immediate context
+        updatedAt: new Date() 
       };
       await setDoc(leadRef, {
         ...currentLeadData,
         updatedAt: serverTimestamp()
       });
+
+      // SEND WELCOME MESSAGE
+      const welcomeRef = doc(db, 'settings', 'welcome');
+      const welcomeSnap = await getDoc(welcomeRef);
+      if (welcomeSnap.exists()) {
+        const welcome = welcomeSnap.data();
+        if (welcome.text || (welcome.mediaUrl && welcome.mediaType !== 'none')) {
+          await fetch('/api/whatsapp/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+              to: msg.chatId || leadId, 
+              message: welcome.text,
+              mediaUrl: welcome.mediaUrl,
+              mediaType: welcome.mediaType,
+              fileName: welcome.fileName
+            })
+          });
+          
+          // Save welcome message to firestore
+          await addDoc(collection(db, 'leads', leadId, 'messages'), {
+            text: welcome.text || `[Mídia: ${welcome.mediaType}]`,
+            sender: 'ai',
+            timestamp: serverTimestamp()
+          });
+        }
+      }
     }
 
     // Update photo if changed
@@ -183,6 +236,50 @@ export default function App() {
 
       await updateDoc(leadRef, updateData);
 
+      // HUMAN AGENT DISTRIBUTION
+      if (result.status === 'humano' && currentLeadData.status !== 'humano') {
+        const usersRef = collection(db, 'users');
+        const q = query(usersRef, orderBy('lastAssignedAt', 'asc'), limit(10));
+        const usersSnap = await getDocs(q);
+        const availableAgents = usersSnap.docs
+          .map(doc => ({ id: doc.id, ...doc.data() }))
+          .filter((a: any) => a.active && a.role === 'agent');
+
+        if (availableAgents.length > 0) {
+          const selectedAgent: any = availableAgents[0];
+          
+          // Assign lead to agent in system
+          await updateDoc(leadRef, {
+            assignedTo: selectedAgent.id
+          });
+
+          // Notify the agent (if they have a phone registered)
+          if (selectedAgent.phone) {
+            const agentMsg = `🚨 *NOVO LEAD QUALIFICADO*\n\nO robô identificou que o cliente *${currentLeadData.name}* precisa de atendimento humano.\n\n*Score:* ${result.leadScore}\n*BANT:* ${Object.entries(updateData.bant).filter(([_, v]) => v).map(([k]) => k.toUpperCase()).join(', ')}\n\nPor favor, acesse o painel para assumir o atendimento.`;
+            
+            await fetch('/api/whatsapp/send', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ 
+                to: selectedAgent.phone, 
+                message: agentMsg,
+                contact: {
+                  name: currentLeadData.name,
+                  phone: msg.from 
+                }
+              })
+            });
+          }
+
+          // Update agent last assigned time
+          await updateDoc(doc(db, 'users', selectedAgent.id), {
+            lastAssignedAt: serverTimestamp()
+          });
+
+          toast.info(`Lead encaminhado para ${selectedAgent.displayName || selectedAgent.name}`);
+        }
+      }
+
       // Get the correct chat ID for reply
       const currentLeadSnap = await getDoc(leadRef);
       const targetChatId = currentLeadSnap.data()?.chatId || leadId;
@@ -213,36 +310,28 @@ export default function App() {
   }
 
   if (!user) {
+    return <AuthScreen />;
+  }
+
+  if (isRoleLoading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-white p-8 rounded-2xl shadow-xl max-w-md w-full text-center"
-        >
-          <div className="w-20 h-20 bg-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-lg shadow-blue-200">
-            <Bot className="text-white w-12 h-12" />
+      <div className="h-screen flex items-center justify-center bg-slate-50">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-200">
+            <Bot className="text-white w-8 h-8 animate-pulse" />
           </div>
-          <h1 className="text-3xl font-bold text-slate-900 mb-2">WhatsApp AI Agent</h1>
-          <p className="text-slate-500 mb-8">Sistema de vendas consultivas com metodologia BANT e IA.</p>
-          <button 
-            onClick={login}
-            className="w-full flex items-center justify-center gap-3 bg-white border border-slate-200 text-slate-700 font-semibold py-3 px-4 rounded-xl hover:bg-slate-50 transition-all shadow-sm"
-          >
-            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-5 h-5" alt="Google" />
-            Entrar com Google
-          </button>
-        </motion.div>
+          <p className="text-slate-500 font-medium animate-pulse">Carregando perfil...</p>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden">
-      <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} userPhone={userPhone} />
+      <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} userPhone={userPhone} userRole={userRole} />
       
       <div className="flex-1 flex flex-col overflow-hidden">
-        <Header user={user} userPhone={userPhone} />
+        <Header user={user} userPhone={userPhone} userRole={userRole} />
         
         <main className="flex-1 overflow-y-auto p-6">
           <AnimatePresence mode="wait">
@@ -250,38 +339,45 @@ export default function App() {
               <motion.div key="dashboard" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
                 <Dashboard 
                   userPhone={userPhone}
+                  userRole={userRole}
+                  userId={user.uid}
                   onSelectLead={(id) => { setSelectedLeadId(id); setActiveTab('chat'); }} 
                 />
               </motion.div>
             )}
             {activeTab === 'kanban' && (
               <motion.div key="kanban" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
-                <Kanban userPhone={userPhone} />
+                <Kanban userPhone={userPhone} userRole={userRole} userId={user.uid} />
               </motion.div>
             )}
             {activeTab === 'chat' && (
               <motion.div key="chat" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="h-full">
-                <Chat selectedLeadId={selectedLeadId} />
+                <Chat selectedLeadId={selectedLeadId} userRole={userRole} userId={user.uid} />
               </motion.div>
             )}
             {activeTab === 'ranking' && (
               <motion.div key="ranking" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
-                <LeadRanking />
+                <LeadRanking userRole={userRole} userId={user.uid} />
               </motion.div>
             )}
-            {activeTab === 'agents' && (
+            {activeTab === 'agents' && userRole === 'admin' && (
               <motion.div key="agents" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
                 <AgentManager />
               </motion.div>
             )}
-            {activeTab === 'whatsapp' && (
+            {activeTab === 'human_agents' && userRole === 'admin' && (
+              <motion.div key="human_agents" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
+                <TeamManager currentUserEmail={user.email} />
+              </motion.div>
+            )}
+            {activeTab === 'whatsapp' && userRole === 'admin' && (
               <motion.div key="whatsapp" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
                 <WhatsAppConnector qrCode={qrCode} isReady={isReady} userPhone={userPhone} onDisconnect={disconnect} />
               </motion.div>
             )}
             {activeTab === 'settings' && (
               <motion.div key="settings" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
-                <Settings user={user} />
+                <Settings user={user} userRole={userRole} />
               </motion.div>
             )}
           </AnimatePresence>

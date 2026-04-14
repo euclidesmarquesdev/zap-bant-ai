@@ -1,20 +1,36 @@
 import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Trophy, Star, TrendingUp, Filter, Download } from 'lucide-react';
 import { motion } from 'motion/react';
 import { formatPhoneNumber } from '../lib/utils';
 
-export default function LeadRanking() {
+interface LeadRankingProps {
+  userRole?: 'admin' | 'agent' | null;
+  userId?: string;
+}
+
+export default function LeadRanking({ userRole, userId }: LeadRankingProps) {
   const [leads, setLeads] = useState<any[]>([]);
 
   useEffect(() => {
-    const q = query(collection(db, 'leads'), orderBy('score', 'desc'));
+    if (!userRole || !userId) return;
+
+    let q = query(collection(db, 'leads'), orderBy('score', 'desc'));
+    
+    if (userRole === 'agent' && userId) {
+      q = query(
+        collection(db, 'leads'),
+        where('assignedTo', '==', userId),
+        orderBy('score', 'desc')
+      );
+    }
+
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setLeads(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
     return () => unsubscribe();
-  }, []);
+  }, [userRole, userId]);
 
   return (
     <div className="space-y-8">

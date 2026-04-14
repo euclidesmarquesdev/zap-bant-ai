@@ -1,17 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Bot, Save, Loader2, Settings2, Store, MessageSquare, ShieldCheck, Sparkles } from 'lucide-react';
+import { Bot, Save, Loader2, Settings2, Store, MessageSquare, ShieldCheck, Sparkles, Image as ImageIcon, Video, FileText, X } from 'lucide-react';
 import { motion } from 'motion/react';
 import { toast } from 'sonner';
 
 export default function AgentManager() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [activeEditor, setActiveEditor] = useState<'agent' | 'shop'>('agent');
+  const [activeEditor, setActiveEditor] = useState<'agent' | 'shop' | 'welcome'>('agent');
   const [config, setConfig] = useState({
     agentMd: '',
     shopMd: ''
+  });
+  const [welcomeConfig, setWelcomeConfig] = useState({
+    text: '',
+    mediaUrl: '',
+    mediaType: 'none',
+    fileName: ''
   });
 
   useEffect(() => {
@@ -21,6 +27,12 @@ export default function AgentManager() {
         const configSnap = await getDoc(configRef);
         if (configSnap.exists()) {
           setConfig(configSnap.data() as any);
+        }
+
+        const welcomeRef = doc(db, 'settings', 'welcome');
+        const welcomeSnap = await getDoc(welcomeRef);
+        if (welcomeSnap.exists()) {
+          setWelcomeConfig(welcomeSnap.data() as any);
         }
       } catch (error) {
         console.error('Erro ao carregar configurações:', error);
@@ -35,7 +47,8 @@ export default function AgentManager() {
     setSaving(true);
     try {
       await setDoc(doc(db, 'settings', 'training'), config);
-      toast.success('Configurações do agente salvas com sucesso!');
+      await setDoc(doc(db, 'settings', 'welcome'), welcomeConfig);
+      toast.success('Configurações salvas com sucesso!');
     } catch (error) {
       console.error('Erro ao salvar:', error);
       toast.error('Erro ao salvar configurações.');
@@ -96,6 +109,18 @@ export default function AgentManager() {
             <span className="font-bold">Loja & Produtos (SHOP.md)</span>
           </button>
 
+          <button 
+            onClick={() => setActiveEditor('welcome')}
+            className={`w-full flex items-center gap-3 p-4 rounded-2xl transition-all ${
+              activeEditor === 'welcome' 
+                ? 'bg-blue-600 text-white shadow-lg shadow-blue-100' 
+                : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200'
+            }`}
+          >
+            <Sparkles className="w-5 h-5" />
+            <span className="font-bold">Boas-vindas & Mídia</span>
+          </button>
+
           <div className="p-6 bg-amber-50 rounded-2xl border border-amber-100 space-y-3">
             <div className="flex items-center gap-2 text-amber-700">
               <ShieldCheck className="w-5 h-5" />
@@ -109,30 +134,102 @@ export default function AgentManager() {
 
         {/* Área do Editor */}
         <div className="lg:col-span-9 space-y-6">
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
-            <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                {activeEditor === 'agent' ? <Bot className="w-4 h-4 text-blue-600" /> : <Store className="w-4 h-4 text-blue-600" />}
-                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                  {activeEditor === 'agent' ? 'Instruções de Comportamento' : 'Catálogo e Regras de Venda'}
-                </span>
+          {activeEditor === 'welcome' ? (
+            <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm space-y-8">
+              <div className="space-y-4">
+                <h3 className="text-lg font-bold text-slate-900">Mensagem de Boas-vindas</h3>
+                <p className="text-sm text-slate-500">Esta mensagem será enviada automaticamente para novos leads, acompanhada de mídia se configurada.</p>
+                <textarea 
+                  value={welcomeConfig.text}
+                  onChange={(e) => setWelcomeConfig({...welcomeConfig, text: e.target.value})}
+                  className="w-full h-32 p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                  placeholder="Olá! Seja bem-vindo à nossa loja..."
+                />
               </div>
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-                <span className="text-[10px] font-bold text-slate-400">EDITOR ATIVO</span>
+
+              <div className="space-y-4">
+                <h3 className="text-lg font-bold text-slate-900">Mídia de Boas-vindas</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-slate-500 uppercase">Tipo de Mídia</label>
+                    <div className="flex gap-2">
+                      {[
+                        { id: 'none', icon: X, label: 'Nenhuma' },
+                        { id: 'image', icon: ImageIcon, label: 'Imagem' },
+                        { id: 'video', icon: Video, label: 'Vídeo' },
+                        { id: 'document', icon: FileText, label: 'PDF/Doc' }
+                      ].map(type => (
+                        <button
+                          key={type.id}
+                          onClick={() => setWelcomeConfig({...welcomeConfig, mediaType: type.id as any})}
+                          className={`flex-1 flex flex-col items-center gap-2 p-3 rounded-xl border transition-all ${
+                            welcomeConfig.mediaType === type.id 
+                              ? 'bg-blue-600 border-blue-600 text-white' 
+                              : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                          }`}
+                        >
+                          <type.icon className="w-5 h-5" />
+                          <span className="text-[10px] font-bold">{type.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {welcomeConfig.mediaType !== 'none' && (
+                    <div className="space-y-4 animate-in fade-in slide-in-from-top-2">
+                      <div className="space-y-2">
+                        <label className="text-xs font-bold text-slate-500 uppercase">URL da Mídia</label>
+                        <input 
+                          type="text"
+                          value={welcomeConfig.mediaUrl}
+                          onChange={(e) => setWelcomeConfig({...welcomeConfig, mediaUrl: e.target.value})}
+                          className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                          placeholder="https://exemplo.com/arquivo.pdf"
+                        />
+                      </div>
+                      {welcomeConfig.mediaType === 'document' && (
+                        <div className="space-y-2">
+                          <label className="text-xs font-bold text-slate-500 uppercase">Nome do Arquivo</label>
+                          <input 
+                            type="text"
+                            value={welcomeConfig.fileName}
+                            onChange={(e) => setWelcomeConfig({...welcomeConfig, fileName: e.target.value})}
+                            className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                            placeholder="Cardapio.pdf"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
-            
-            <textarea 
-              value={activeEditor === 'agent' ? config.agentMd : config.shopMd}
-              onChange={(e) => setConfig({
-                ...config,
-                [activeEditor === 'agent' ? 'agentMd' : 'shopMd']: e.target.value
-              })}
-              className="w-full h-[600px] p-8 font-mono text-sm text-slate-700 focus:outline-none resize-none leading-relaxed"
-              placeholder={activeEditor === 'agent' ? "# Defina a personalidade do seu agente aqui..." : "# Liste seus produtos e regras da loja aqui..."}
-            />
-          </div>
+          ) : (
+            <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+              <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  {activeEditor === 'agent' ? <Bot className="w-4 h-4 text-blue-600" /> : <Store className="w-4 h-4 text-blue-600" />}
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                    {activeEditor === 'agent' ? 'Instruções de Comportamento' : 'Catálogo e Regras de Venda'}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                  <span className="text-[10px] font-bold text-slate-400">EDITOR ATIVO</span>
+                </div>
+              </div>
+              
+              <textarea 
+                value={activeEditor === 'agent' ? config.agentMd : config.shopMd}
+                onChange={(e) => setConfig({
+                  ...config,
+                  [activeEditor === 'agent' ? 'agentMd' : 'shopMd']: e.target.value
+                })}
+                className="w-full h-[600px] p-8 font-mono text-sm text-slate-700 focus:outline-none resize-none leading-relaxed"
+                placeholder={activeEditor === 'agent' ? "# Defina a personalidade do seu agente aqui..." : "# Liste seus produtos e regras da loja aqui..."}
+              />
+            </div>
+          )}
 
           {/* Cards de Ajuda Contextual */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
