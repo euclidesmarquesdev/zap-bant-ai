@@ -62,7 +62,7 @@ export default function TeamManager({ currentUserEmail }: TeamManagerProps) {
   };
 
   const toggleUserStatus = async (id: string, currentStatus: boolean, userEmail: string) => {
-    if (userEmail === PRIMARY_ADMIN_EMAIL) {
+    if (userEmail.toLowerCase() === PRIMARY_ADMIN_EMAIL.toLowerCase()) {
       toast.error('O administrador principal não pode ser desativado.');
       return;
     }
@@ -75,7 +75,7 @@ export default function TeamManager({ currentUserEmail }: TeamManagerProps) {
   };
 
   const changeUserRole = async (id: string, newRole: 'admin' | 'agent', userEmail: string) => {
-    if (userEmail === PRIMARY_ADMIN_EMAIL) {
+    if (userEmail.toLowerCase() === PRIMARY_ADMIN_EMAIL.toLowerCase()) {
       toast.error('O papel do administrador principal não pode ser alterado.');
       return;
     }
@@ -92,7 +92,7 @@ export default function TeamManager({ currentUserEmail }: TeamManagerProps) {
   };
 
   const deleteUser = async (id: string, userEmail: string) => {
-    if (userEmail === PRIMARY_ADMIN_EMAIL) {
+    if (userEmail.toLowerCase() === PRIMARY_ADMIN_EMAIL.toLowerCase()) {
       toast.error('O administrador principal não pode ser excluído.');
       return;
     }

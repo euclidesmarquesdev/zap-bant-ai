@@ -46,7 +46,7 @@ export default function AuthScreen() {
         const userSnap = await getDoc(userRef);
         
         if (!userSnap.exists()) {
-          const role = user.email === adminEmail ? 'admin' : 'agent';
+          const role = user.email?.toLowerCase() === adminEmail.toLowerCase() ? 'admin' : 'agent';
           await setDoc(userRef, {
             uid: user.uid,
             email: user.email?.toLowerCase(),
@@ -60,7 +60,13 @@ export default function AuthScreen() {
       toast.success('Login realizado com sucesso!');
     } catch (error: any) {
       console.error('Google login error:', error);
-      toast.error('Erro ao entrar com Google');
+      if (error.code === 'auth/popup-blocked') {
+        toast.error('O popup de login foi bloqueado pelo navegador.');
+      } else if (error.code === 'auth/unauthorized-domain') {
+        toast.error('Este domínio não está autorizado no Firebase Console.');
+      } else {
+        toast.error('Erro ao entrar com Google: ' + (error.message || 'Erro desconhecido'));
+      }
     } finally {
       setLoading(false);
     }
@@ -100,10 +106,10 @@ export default function AuthScreen() {
             await deleteDoc(doc(db, 'users', invitedDoc.id));
           }
         } else {
-          const role = email === adminEmail ? 'admin' : 'agent';
+          const role = email.toLowerCase() === adminEmail.toLowerCase() ? 'admin' : 'agent';
           await setDoc(doc(db, 'users', user.uid), {
             uid: user.uid,
-            email: user.email.toLowerCase(),
+            email: user.email?.toLowerCase(),
             displayName: name,
             role: role,
             active: true,

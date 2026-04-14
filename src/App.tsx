@@ -45,7 +45,9 @@ export default function App() {
         const userRef = doc(db, 'users', user.uid);
         unsubscribeUser = onSnapshot(userRef, (snap) => {
           // Primary admin always has admin role in UI
-          if (user.email === adminEmail) {
+          const isPrimaryAdmin = user.email?.toLowerCase() === adminEmail.toLowerCase();
+          
+          if (isPrimaryAdmin) {
             setUserRole('admin');
             if (snap.exists() && snap.data().role !== 'admin') {
               updateDoc(userRef, { role: 'admin' }).catch(console.error);
