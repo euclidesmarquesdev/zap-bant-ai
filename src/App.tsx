@@ -25,10 +25,12 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [userRole, setUserRole] = useState<'admin' | 'agent' | null>(null);
   const [userData, setUserData] = useState<any>(null);
+  const [welcomeSettings, setWelcomeSettings] = useState<any>(null);
   const [isRoleLoading, setIsRoleLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [trainingData, setTrainingData] = useState({ agentMd: '', shopMd: '' });
+  const [processedMessages] = useState(new Set<string>());
   const { qrCode, isReady, userPhone, lastMessage, sendAIResponse, disconnect, setTyping } = useWhatsApp();
 
   useEffect(() => {
@@ -92,6 +94,14 @@ export default function App() {
               .catch(err => console.error('Error fetching training data:', err));
           }
         });
+
+        // Cache welcome settings
+        const welcomeRef = doc(db, 'settings', 'welcome');
+        onSnapshot(welcomeRef, (snap) => {
+          if (snap.exists()) {
+            setWelcomeSettings(snap.data());
+          }
+        });
       } else {
         setUser(null);
         if (unsubscribeConfig) {
@@ -110,7 +120,17 @@ export default function App() {
   // Process incoming WhatsApp messages with Gemini
   useEffect(() => {
     if (user && lastMessage && trainingData.agentMd) {
-      handleIncomingMessage(lastMessage);
+      // Deduplicate by message ID if available, or timestamp/content hash
+      const msgId = lastMessage.id || `${lastMessage.from}_${lastMessage.timestamp}`;
+      if (!processedMessages.has(msgId)) {
+        processedMessages.add(msgId);
+        // Keep set size manageable
+        if (processedMessages.size > 100) {
+          const firstItem = processedMessages.values().next().value;
+          if (firstItem) processedMessages.delete(firstItem);
+        }
+        handleIncomingMessage(lastMessage);
+      }
     }
   }, [user, lastMessage, trainingData]);
 
@@ -169,10 +189,8 @@ export default function App() {
       });
 
       // SEND WELCOME MESSAGE
-      const welcomeRef = doc(db, 'settings', 'welcome');
-      const welcomeSnap = await getDoc(welcomeRef);
-      if (welcomeSnap.exists()) {
-        const welcome = welcomeSnap.data();
+      if (welcomeSettings) {
+        const welcome = welcomeSettings;
         if (welcome.text || (welcome.mediaUrl && welcome.mediaType !== 'none')) {
           await fetch('/api/whatsapp/send', {
             method: 'POST',
@@ -257,8 +275,7 @@ export default function App() {
       }
 
       // Get the correct chat ID for reply
-      const currentLeadSnap = await getDoc(leadRef);
-      const targetChatId = currentLeadSnap.data()?.chatId || leadId;
+      const targetChatId = updateData.chatId || currentLeadData.chatId || leadId;
 
       // Save AI message to firestore
       await addDoc(collection(db, 'leads', leadId, 'messages'), {

@@ -182,30 +182,38 @@ export default function Dashboard({ onSelectLead, userPhone, userRole, userId }:
         startDate = subWeeks(now, 1);
     }
 
-    let q = query(
-      collection(db, 'leads'), 
-      where('updatedAt', '>=', Timestamp.fromDate(startDate)),
-      orderBy('updatedAt', 'desc'),
-      limit(50)
-    );
-
-    // If agent, only show assigned leads
-    if (userRole === 'agent' && userId) {
-      q = query(
-        collection(db, 'leads'),
-        where('assignedTo', '==', userId),
+    const fetchLeads = async () => {
+      let q = query(
+        collection(db, 'leads'), 
         where('updatedAt', '>=', Timestamp.fromDate(startDate)),
         orderBy('updatedAt', 'desc'),
         limit(50)
       );
-    }
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const leadsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setLeads(leadsData);
-    });
+      // If agent, only show assigned leads
+      if (userRole === 'agent' && userId) {
+        q = query(
+          collection(db, 'leads'),
+          where('assignedTo', '==', userId),
+          where('updatedAt', '>=', Timestamp.fromDate(startDate)),
+          orderBy('updatedAt', 'desc'),
+          limit(50)
+        );
+      }
 
-    return () => unsubscribe();
+      try {
+        const snapshot = await getDocs(q);
+        const leadsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setLeads(leadsData);
+      } catch (error) {
+        console.error("Error fetching leads:", error);
+      }
+    };
+
+    fetchLeads();
+    const interval = setInterval(fetchLeads, 30000); // 30s refresh
+
+    return () => clearInterval(interval);
   }, [period, userRole, userId]);
 
   const stats = useMemo(() => {

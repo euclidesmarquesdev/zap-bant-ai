@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot, query, orderBy, where, limit } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, where, limit, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Trophy, Star, TrendingUp, Filter, Download } from 'lucide-react';
 import { motion } from 'motion/react';
@@ -16,21 +16,30 @@ export default function LeadRanking({ userRole, userId }: LeadRankingProps) {
   useEffect(() => {
     if (!userRole || !userId) return;
 
-    let q = query(collection(db, 'leads'), orderBy('score', 'desc'), limit(50));
-    
-    if (userRole === 'agent' && userId) {
-      q = query(
-        collection(db, 'leads'),
-        where('assignedTo', '==', userId),
-        orderBy('score', 'desc'),
-        limit(50)
-      );
-    }
+    const fetchLeads = async () => {
+      let q = query(collection(db, 'leads'), orderBy('score', 'desc'), limit(50));
+      
+      if (userRole === 'agent' && userId) {
+        q = query(
+          collection(db, 'leads'),
+          where('assignedTo', '==', userId),
+          orderBy('score', 'desc'),
+          limit(50)
+        );
+      }
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      setLeads(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
-    return () => unsubscribe();
+      try {
+        const snapshot = await getDocs(q);
+        setLeads(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      } catch (error) {
+        console.error("Error fetching ranking:", error);
+      }
+    };
+
+    fetchLeads();
+    const interval = setInterval(fetchLeads, 60000); // 1 minute refresh
+
+    return () => clearInterval(interval);
   }, [userRole, userId]);
 
   return (
