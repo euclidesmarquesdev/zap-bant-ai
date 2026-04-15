@@ -14,7 +14,8 @@ import {
   EyeOff,
   CheckCircle2,
   AlertCircle,
-  Bot
+  Bot,
+  Globe
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { toast } from 'sonner';
@@ -22,9 +23,10 @@ import { toast } from 'sonner';
 interface SettingsProps {
   user: User;
   userRole?: 'admin' | 'agent' | null;
+  orgId?: string | null;
 }
 
-export default function Settings({ user, userRole }: SettingsProps) {
+export default function Settings({ user, userRole, orgId }: SettingsProps) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [savingFirebase, setSavingFirebase] = useState(false);
@@ -49,20 +51,10 @@ export default function Settings({ user, userRole }: SettingsProps) {
 
   useEffect(() => {
     let isMounted = true;
-    const timeoutId = setTimeout(() => {
-      if (isMounted && loading) {
-        setLoading(false);
-        toast.error('Tempo limite de carregamento excedido. Verifique sua conexão ou configuração do Firebase.');
-      }
-    }, 10000);
-
     async function loadSettings() {
+      if (!orgId) return;
       try {
-        if (!db) {
-          throw new Error('Banco de dados não inicializado');
-        }
-
-        const userDoc = await getDoc(doc(db, 'users', user.uid));
+        const userDoc = await getDoc(doc(db, 'organizations', orgId, 'users', user.uid));
         if (isMounted && userDoc.exists()) {
           const data = userDoc.data();
           setSettings(prev => ({
@@ -75,7 +67,6 @@ export default function Settings({ user, userRole }: SettingsProps) {
           }));
         }
 
-        // Load Firebase Config (Admin only)
         if (userRole === 'admin') {
           const res = await fetch('/api/config');
           const fbData = await res.json();
@@ -83,34 +74,26 @@ export default function Settings({ user, userRole }: SettingsProps) {
         }
       } catch (error) {
         console.error('Erro ao carregar configurações:', error);
-        if (isMounted) toast.error('Erro ao carregar suas configurações. Verifique o Firebase.');
       } finally {
-        if (isMounted) {
-          setLoading(false);
-          clearTimeout(timeoutId);
-        }
+        if (isMounted) setLoading(false);
       }
     }
     loadSettings();
-
-    return () => {
-      isMounted = false;
-      clearTimeout(timeoutId);
-    };
-  }, [user, userRole]);
+    return () => { isMounted = false; };
+  }, [user, userRole, orgId]);
 
   const handleSave = async () => {
+    if (!orgId) return;
     setSaving(true);
     try {
-      await setDoc(doc(db, 'users', user.uid), {
+      await setDoc(doc(db, 'organizations', orgId, 'users', user.uid), {
         ...settings,
+        orgId,
         updatedAt: new Date(),
       }, { merge: true });
-      
-      toast.success('Configurações salvas com sucesso!');
+      toast.success('Configurações salvas!');
     } catch (error) {
-      console.error('Erro ao salvar configurações:', error);
-      toast.error('Erro ao salvar configurações.');
+      console.error('Erro ao salvar:', error);
     } finally {
       setSaving(false);
     }
@@ -201,32 +184,22 @@ export default function Settings({ user, userRole }: SettingsProps) {
                 <h3 className="text-lg font-bold text-slate-900">Infraestrutura Firebase</h3>
               </div>
 
+              <div className="p-4 bg-amber-50 rounded-2xl border border-amber-100 flex gap-3">
+                <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                <p className="text-xs text-amber-700 leading-relaxed">
+                  Configure as chaves do seu projeto Firebase para habilitar o banco de dados e autenticação. 
+                  Obtenha esses dados no <a href={`https://console.firebase.google.com/project/${fbConfig.projectId || '_'}/settings/general`} target="_blank" rel="noreferrer" className="text-amber-700 font-bold hover:underline">Console do Firebase</a>.
+                </p>
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-500 uppercase">API Key</label>
-                  <input 
-                    type="text" 
-                    value={fbConfig.apiKey}
-                    onChange={e => setFbConfig({...fbConfig, apiKey: e.target.value})}
-                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                  />
-                </div>
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-slate-500 uppercase">Project ID</label>
                   <input 
                     type="text" 
                     value={fbConfig.projectId}
-                    onChange={e => setFbConfig({...fbConfig, projectId: e.target.value})}
-                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-500 uppercase">Auth Domain</label>
-                  <input 
-                    type="text" 
-                    value={fbConfig.authDomain}
-                    onChange={e => setFbConfig({...fbConfig, authDomain: e.target.value})}
-                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                    disabled
+                    className="w-full px-4 py-2 bg-slate-100 border border-slate-200 rounded-xl text-xs text-slate-500 cursor-not-allowed"
                   />
                 </div>
                 <div className="space-y-2">
@@ -234,21 +207,50 @@ export default function Settings({ user, userRole }: SettingsProps) {
                   <input 
                     type="text" 
                     value={fbConfig.firestoreDatabaseId}
-                    onChange={e => setFbConfig({...fbConfig, firestoreDatabaseId: e.target.value})}
-                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                    disabled
+                    className="w-full px-4 py-2 bg-slate-100 border border-slate-200 rounded-xl text-xs text-slate-500 cursor-not-allowed"
                   />
                 </div>
               </div>
 
-              <div className="flex justify-end">
-                <button 
-                  onClick={handleSaveFirebase}
-                  disabled={savingFirebase}
-                  className="flex items-center gap-2 px-6 py-2 bg-amber-600 text-white text-xs font-bold rounded-xl hover:bg-amber-700 transition-all disabled:opacity-50"
-                >
-                  {savingFirebase ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                  Atualizar Firebase
-                </button>
+              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200">
+                <p className="text-[10px] text-slate-500 leading-relaxed">
+                  As chaves de infraestrutura (API Key, Auth Domain, etc) são gerenciadas pelo servidor para maior segurança e não podem ser editadas diretamente pelo painel.
+                </p>
+              </div>
+            </section>
+          )}
+
+          {/* Seção de Portal do Atendente - Admin Only */}
+          {userRole === 'admin' && (
+            <section className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm space-y-6">
+              <div className="flex items-center gap-4 mb-2">
+                <div className="w-12 h-12 bg-purple-50 rounded-2xl flex items-center justify-center text-purple-600">
+                  <Globe className="w-6 h-6" />
+                </div>
+                <h3 className="text-lg font-bold text-slate-900">Portal do Atendente (SaaS)</h3>
+              </div>
+
+              <div className="p-4 bg-purple-50 rounded-2xl border border-purple-100 space-y-3">
+                <p className="text-xs text-purple-700 leading-relaxed">
+                  Este é o link exclusivo para sua equipe de atendimento. Compartilhe este link com seus atendentes para que eles possam acessar o painel desta organização.
+                </p>
+                <div className="flex items-center gap-2">
+                  <input 
+                    readOnly
+                    value={`${window.location.origin}/login?org=${orgId}`}
+                    className="flex-1 px-3 py-2 bg-white border border-purple-200 rounded-lg text-[10px] font-mono text-purple-900"
+                  />
+                  <button 
+                    onClick={() => {
+                      navigator.clipboard.writeText(`${window.location.origin}/login?org=${orgId}`);
+                      toast.success('Link copiado!');
+                    }}
+                    className="px-3 py-2 bg-purple-600 text-white text-[10px] font-bold rounded-lg hover:bg-purple-700 transition-all"
+                  >
+                    Copiar Link
+                  </button>
+                </div>
               </div>
             </section>
           )}

@@ -10,9 +10,10 @@ interface ChatProps {
   selectedLeadId: string | null;
   userRole?: 'admin' | 'agent' | null;
   userId?: string;
+  orgId?: string | null;
 }
 
-export default function Chat({ selectedLeadId, userRole, userId }: ChatProps) {
+export default function Chat({ selectedLeadId, userRole, userId, orgId }: ChatProps) {
   const [leads, setLeads] = useState<any[]>([]);
   const [messages, setMessages] = useState<any[]>([]);
   const [activeLeadId, setActiveLeadId] = useState<string | null>(selectedLeadId);
@@ -20,14 +21,14 @@ export default function Chat({ selectedLeadId, userRole, userId }: ChatProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!userRole || !userId) return;
+    if (!userRole || !userId || !orgId) return;
 
     const fetchLeads = async () => {
-      let q = query(collection(db, 'leads'), orderBy('updatedAt', 'desc'), limit(50));
+      let q = query(collection(db, 'organizations', orgId, 'leads'), orderBy('updatedAt', 'desc'), limit(50));
       
-      if (userRole === 'agent' && userId) {
+      if (userRole === 'agent') {
         q = query(
-          collection(db, 'leads'), 
+          collection(db, 'organizations', orgId, 'leads'), 
           where('assignedTo', '==', userId),
           orderBy('updatedAt', 'desc'),
           limit(50)
@@ -43,14 +44,14 @@ export default function Chat({ selectedLeadId, userRole, userId }: ChatProps) {
     };
 
     fetchLeads();
-    const interval = setInterval(fetchLeads, 30000); // 30s refresh
+    const interval = setInterval(fetchLeads, 30000);
     return () => clearInterval(interval);
-  }, [userRole, userId]);
+  }, [userRole, userId, orgId]);
 
   useEffect(() => {
-    if (activeLeadId) {
+    if (activeLeadId && orgId) {
       const q = query(
-        collection(db, 'leads', activeLeadId, 'messages'), 
+        collection(db, 'organizations', orgId, 'leads', activeLeadId, 'messages'), 
         orderBy('timestamp', 'desc'),
         limit(50)
       );
@@ -59,7 +60,7 @@ export default function Chat({ selectedLeadId, userRole, userId }: ChatProps) {
       });
       return () => unsubscribe();
     }
-  }, [activeLeadId]);
+  }, [activeLeadId, orgId]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -69,23 +70,22 @@ export default function Chat({ selectedLeadId, userRole, userId }: ChatProps) {
 
   const sendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputText.trim() || !activeLeadId) return;
+    if (!inputText.trim() || !activeLeadId || !orgId) return;
 
     const text = inputText;
     setInputText('');
 
-    // Save human message to firestore
-    await addDoc(collection(db, 'leads', activeLeadId, 'messages'), {
+    await addDoc(collection(db, 'organizations', orgId, 'leads', activeLeadId, 'messages'), {
       text,
       sender: 'human',
-      timestamp: serverTimestamp()
+      timestamp: serverTimestamp(),
+      orgId
     });
 
-    // Send via WhatsApp
     await fetch('/api/whatsapp/send', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ to: activeLead.chatId || activeLeadId, message: text })
+      body: JSON.stringify({ orgId, to: activeLeadId, message: text })
     });
   };
 

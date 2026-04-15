@@ -1,11 +1,33 @@
 {
   "entities": {
+    "Organization": {
+      "title": "Organization",
+      "description": "Dados da empresa cliente (instância)",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "ownerUid": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "active": { "type": "boolean" },
+        "whatsappNumber": { "type": "string" },
+        "whatsappStatus": { "type": "string" },
+        "plan": { "type": "string", "enum": ["free", "basic", "pro", "enterprise"] },
+        "subscriptionStatus": { "type": "string", "enum": ["active", "trialing", "past_due", "canceled", "incomplete"] },
+        "stripeCustomerId": { "type": "string" },
+        "stripeSubscriptionId": { "type": "string" },
+        "trialEndsAt": { "type": "string", "format": "date-time" },
+        "nextBillingDate": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "ownerUid"]
+    },
     "User": {
       "title": "User",
       "description": "Informações do usuário do sistema (atendente)",
       "type": "object",
       "properties": {
         "uid": { "type": "string" },
+        "orgId": { "type": "string" },
         "email": { "type": "string" },
         "displayName": { "type": "string" },
         "phone": { "type": "string" },
@@ -13,7 +35,7 @@
         "active": { "type": "boolean" },
         "lastAssignedAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["uid", "email"]
+      "required": ["uid", "email", "orgId"]
     },
     "Lead": {
       "title": "Lead",
@@ -21,6 +43,7 @@
       "type": "object",
       "properties": {
         "id": { "type": "string" },
+        "orgId": { "type": "string" },
         "name": { "type": "string" },
         "phone": { "type": "string" },
         "status": { "type": "string", "enum": ["novo", "atendido", "negociacao", "fechamento", "pagamento", "humano"] },
@@ -38,7 +61,7 @@
         "lastMessage": { "type": "string" },
         "updatedAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["id", "phone", "status"]
+      "required": ["id", "phone", "status", "orgId"]
     },
     "Message": {
       "title": "Message",
@@ -46,12 +69,13 @@
       "type": "object",
       "properties": {
         "id": { "type": "string" },
+        "orgId": { "type": "string" },
         "leadId": { "type": "string" },
         "text": { "type": "string" },
         "sender": { "type": "string", "enum": ["lead", "ai", "human"] },
         "timestamp": { "type": "string", "format": "date-time" }
       },
-      "required": ["leadId", "text", "sender", "timestamp"]
+      "required": ["leadId", "text", "sender", "timestamp", "orgId"]
     },
     "AgentModel": {
       "title": "AgentModel",
@@ -59,11 +83,12 @@
       "type": "object",
       "properties": {
         "id": { "type": "string" },
+        "orgId": { "type": "string" },
         "name": { "type": "string" },
         "description": { "type": "string" },
         "isActive": { "type": "boolean" }
       },
-      "required": ["id", "name"]
+      "required": ["id", "name", "orgId"]
     },
     "HumanAgent": {
       "title": "HumanAgent",
@@ -71,49 +96,60 @@
       "type": "object",
       "properties": {
         "id": { "type": "string" },
+        "orgId": { "type": "string" },
         "name": { "type": "string" },
         "phone": { "type": "string" },
         "lastAssignedAt": { "type": "string", "format": "date-time" },
         "active": { "type": "boolean" }
       },
-      "required": ["name", "phone"]
+      "required": ["name", "phone", "orgId"]
     },
     "WelcomeConfig": {
       "title": "WelcomeConfig",
       "description": "Configuração da mensagem de boas-vindas",
       "type": "object",
       "properties": {
+        "orgId": { "type": "string" },
         "text": { "type": "string" },
         "mediaUrl": { "type": "string" },
         "mediaType": { "type": "string", "enum": ["none", "image", "video", "document"] },
         "fileName": { "type": "string" }
-      }
+      },
+      "required": ["orgId"]
     }
   },
   "firestore": {
-    "/users/{uid}": {
+    "/organizations/{orgId}": {
+      "schema": "Organization",
+      "description": "Coleção de organizações (clientes SaaS)"
+    },
+    "/organizations/{orgId}/users/{uid}": {
       "schema": "User",
-      "description": "Coleção de usuários do sistema"
+      "description": "Coleção de usuários por organização"
     },
-    "/leads/{leadId}": {
+    "/organizations/{orgId}/leads/{leadId}": {
       "schema": "Lead",
-      "description": "Coleção de leads qualificados"
+      "description": "Coleção de leads por organização"
     },
-    "/leads/{leadId}/messages/{messageId}": {
+    "/organizations/{orgId}/leads/{leadId}/messages/{messageId}": {
       "schema": "Message",
       "description": "Subcoleção de mensagens por lead"
     },
-    "/agents/{agentId}": {
+    "/organizations/{orgId}/agents/{agentId}": {
       "schema": "AgentModel",
-      "description": "Coleção de modelos de agentes configuráveis"
+      "description": "Coleção de modelos de agentes por organização"
     },
-    "/human_agents/{agentId}": {
+    "/organizations/{orgId}/human_agents/{agentId}": {
       "schema": "HumanAgent",
-      "description": "Coleção de atendentes humanos"
+      "description": "Coleção de atendentes humanos por organização"
     },
-    "/settings/welcome": {
+    "/organizations/{orgId}/settings/welcome": {
       "schema": "WelcomeConfig",
-      "description": "Configuração da mensagem de boas-vindas"
+      "description": "Configuração da mensagem de boas-vindas por organização"
+    },
+    "/organizations/{orgId}/settings/training": {
+      "schema": "object",
+      "description": "Configurações de treinamento (AGENT.md e SHOP.md) por organização"
     }
   }
 }

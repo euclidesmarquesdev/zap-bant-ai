@@ -8,20 +8,21 @@ import { formatPhoneNumber } from '../lib/utils';
 interface LeadRankingProps {
   userRole?: 'admin' | 'agent' | null;
   userId?: string;
+  orgId?: string | null;
 }
 
-export default function LeadRanking({ userRole, userId }: LeadRankingProps) {
+export default function LeadRanking({ userRole, userId, orgId }: LeadRankingProps) {
   const [leads, setLeads] = useState<any[]>([]);
 
   useEffect(() => {
-    if (!userRole || !userId) return;
+    if (!userRole || !userId || !orgId) return;
 
     const fetchLeads = async () => {
-      let q = query(collection(db, 'leads'), orderBy('score', 'desc'), limit(50));
+      let q = query(collection(db, 'organizations', orgId, 'leads'), orderBy('score', 'desc'), limit(50));
       
-      if (userRole === 'agent' && userId) {
+      if (userRole === 'agent') {
         q = query(
-          collection(db, 'leads'),
+          collection(db, 'organizations', orgId, 'leads'),
           where('assignedTo', '==', userId),
           orderBy('score', 'desc'),
           limit(50)
@@ -37,10 +38,9 @@ export default function LeadRanking({ userRole, userId }: LeadRankingProps) {
     };
 
     fetchLeads();
-    const interval = setInterval(fetchLeads, 60000); // 1 minute refresh
-
+    const interval = setInterval(fetchLeads, 60000);
     return () => clearInterval(interval);
-  }, [userRole, userId]);
+  }, [userRole, userId, orgId]);
 
   return (
     <div className="space-y-8">

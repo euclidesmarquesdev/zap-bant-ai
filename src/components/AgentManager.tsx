@@ -5,7 +5,7 @@ import { Bot, Save, Loader2, Settings2, Store, MessageSquare, ShieldCheck, Spark
 import { motion } from 'motion/react';
 import { toast } from 'sonner';
 
-export default function AgentManager() {
+export default function AgentManager({ orgId }: { orgId?: string | null }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [activeEditor, setActiveEditor] = useState<'agent' | 'shop' | 'welcome'>('agent');
@@ -22,14 +22,15 @@ export default function AgentManager() {
 
   useEffect(() => {
     async function loadConfig() {
+      if (!orgId) return;
       try {
-        const configRef = doc(db, 'settings', 'training');
+        const configRef = doc(db, 'organizations', orgId, 'settings', 'training');
         const configSnap = await getDoc(configRef);
         if (configSnap.exists()) {
           setConfig(configSnap.data() as any);
         }
 
-        const welcomeRef = doc(db, 'settings', 'welcome');
+        const welcomeRef = doc(db, 'organizations', orgId, 'settings', 'welcome');
         const welcomeSnap = await getDoc(welcomeRef);
         if (welcomeSnap.exists()) {
           setWelcomeConfig(welcomeSnap.data() as any);
@@ -41,17 +42,17 @@ export default function AgentManager() {
       }
     }
     loadConfig();
-  }, []);
+  }, [orgId]);
 
   const handleSave = async () => {
+    if (!orgId) return;
     setSaving(true);
     try {
-      await setDoc(doc(db, 'settings', 'training'), config);
-      await setDoc(doc(db, 'settings', 'welcome'), welcomeConfig);
-      toast.success('Configurações salvas com sucesso!');
+      await setDoc(doc(db, 'organizations', orgId, 'settings', 'training'), { ...config, orgId });
+      await setDoc(doc(db, 'organizations', orgId, 'settings', 'welcome'), { ...welcomeConfig, orgId });
+      toast.success('Configurações salvas!');
     } catch (error) {
       console.error('Erro ao salvar:', error);
-      toast.error('Erro ao salvar configurações.');
     } finally {
       setSaving(false);
     }

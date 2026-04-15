@@ -33,9 +33,17 @@ export default function Header({ user, userPhone, userRole }: HeaderProps) {
         <div className="flex items-center gap-3 pl-6 border-l border-slate-200">
           <div className="text-right">
             <p className="text-sm font-semibold text-slate-900">{user.displayName || user.email}</p>
-            <p className="text-xs font-medium text-blue-600">
-              {userRole === 'admin' ? 'Administrador' : 'Atendente'}
-            </p>
+            <div className="flex flex-col items-end">
+              <p className="text-xs font-medium text-blue-600">
+                {userRole === 'admin' ? 'Administrador' : 'Atendente'}
+              </p>
+              {userPhone && (
+                <span className="text-[10px] font-bold text-green-600 flex items-center gap-1">
+                  <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
+                  +{userPhone}
+                </span>
+              )}
+            </div>
           </div>
           <img 
             src={user.photoURL || `https://ui-avatars.com/api/?name=${user.displayName || user.email}`} 

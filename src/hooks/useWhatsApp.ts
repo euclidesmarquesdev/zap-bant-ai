@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
 
 export function useWhatsApp() {
@@ -7,6 +7,7 @@ export function useWhatsApp() {
   const [isReady, setIsReady] = useState(false);
   const [userPhone, setUserPhone] = useState<string>("");
   const [lastMessage, setLastMessage] = useState<any>(null);
+  const [currentOrgId, setCurrentOrgId] = useState<string | null>(null);
 
   useEffect(() => {
     const newSocket = io();
@@ -35,15 +36,37 @@ export function useWhatsApp() {
     };
   }, []);
 
+  useEffect(() => {
+    if (socket && currentOrgId) {
+      socket.emit('join', currentOrgId);
+      
+      // Trigger connection check on server
+      fetch('/api/whatsapp/connect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orgId: currentOrgId })
+      }).catch(console.error);
+    }
+  }, [socket, currentOrgId]);
+
+  const joinOrg = useCallback((orgId: string) => {
+    setCurrentOrgId(orgId);
+  }, []);
+
   const sendAIResponse = (to: string, message: string) => {
-    if (socket) {
-      socket.emit('ai:response', { to, message });
+    if (socket && currentOrgId) {
+      socket.emit('ai:response', { orgId: currentOrgId, to, message });
     }
   };
 
   const disconnect = async () => {
+    if (!currentOrgId) return false;
     try {
-      const response = await fetch('/api/whatsapp/disconnect', { method: 'POST' });
+      const response = await fetch('/api/whatsapp/disconnect', { 
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orgId: currentOrgId })
+      });
       const data = await response.json();
       if (data.success) {
         setIsReady(false);
@@ -57,10 +80,10 @@ export function useWhatsApp() {
   };
 
   const setTyping = (to: string, status: 'composing' | 'paused') => {
-    if (socket) {
-      socket.emit('whatsapp:typing', { to, status });
+    if (socket && currentOrgId) {
+      socket.emit('whatsapp:typing', { orgId: currentOrgId, to, status });
     }
   };
 
-  return { qrCode, isReady, userPhone, lastMessage, sendAIResponse, disconnect, setTyping };
+  return { qrCode, isReady, userPhone, lastMessage, sendAIResponse, disconnect, setTyping, joinOrg };
 }

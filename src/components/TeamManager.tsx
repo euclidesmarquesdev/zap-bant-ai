@@ -7,46 +7,47 @@ import { formatPhoneNumber } from '../lib/utils';
 
 interface TeamManagerProps {
   currentUserEmail?: string | null;
+  orgId?: string | null;
 }
 
-export default function TeamManager({ currentUserEmail }: TeamManagerProps) {
+export default function TeamManager({ currentUserEmail, orgId }: TeamManagerProps) {
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
   const [newUser, setNewUser] = useState({ email: '', name: '', phone: '', role: 'agent' as 'admin' | 'agent' });
   const [isAdding, setIsAdding] = useState(false);
   const PRIMARY_ADMIN_EMAIL = adminEmail;
-  const APP_URL = window.location.origin;
+  const PORTAL_URL = `${window.location.origin}/login?org=${orgId}`;
 
   useEffect(() => {
-    const q = query(collection(db, 'users'), orderBy('email', 'asc'));
+    if (!orgId) return;
+    const q = query(collection(db, 'organizations', orgId, 'users'), orderBy('email', 'asc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setUsers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       setLoading(false);
     });
     return () => unsubscribe();
-  }, []);
+  }, [orgId]);
 
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!orgId) return;
     setIsAdding(true);
     try {
-      // We can't create the Auth account here easily without Admin SDK, 
-      // but we can pre-create the Firestore document so when they sign up, 
-      // they get the right role and data.
       const tempId = `invited_${Date.now()}`;
-      await setDoc(doc(db, 'users', tempId), {
+      await setDoc(doc(db, 'organizations', orgId, 'users', tempId), {
         email: newUser.email.toLowerCase(),
         displayName: newUser.name,
         phone: newUser.phone.replace(/\D/g, ''),
         role: newUser.role,
+        orgId,
         active: true,
         invited: true,
         lastAssignedAt: serverTimestamp(),
         createdAt: serverTimestamp()
       });
       
-      toast.success('Convite registrado! Peça para o atendente se cadastrar com este e-mail.');
+      toast.success('Convite registrado!');
       setNewUser({ email: '', name: '', phone: '', role: 'agent' });
       setShowAddForm(false);
     } catch (error) {
@@ -56,18 +57,19 @@ export default function TeamManager({ currentUserEmail }: TeamManagerProps) {
     }
   };
 
-  const copyAppUrl = () => {
-    navigator.clipboard.writeText(APP_URL);
-    toast.success('Link do sistema copiado!');
+  const copyPortalUrl = () => {
+    navigator.clipboard.writeText(PORTAL_URL);
+    toast.success('Link do portal copiado!');
   };
 
   const toggleUserStatus = async (id: string, currentStatus: boolean, userEmail: string) => {
+    if (!orgId) return;
     if (userEmail.toLowerCase() === PRIMARY_ADMIN_EMAIL.toLowerCase()) {
       toast.error('O administrador principal não pode ser desativado.');
       return;
     }
     try {
-      await updateDoc(doc(db, 'users', id), { active: !currentStatus });
+      await updateDoc(doc(db, 'organizations', orgId, 'users', id), { active: !currentStatus });
       toast.success('Status atualizado!');
     } catch (error) {
       toast.error('Erro ao atualizar status.');
@@ -75,16 +77,17 @@ export default function TeamManager({ currentUserEmail }: TeamManagerProps) {
   };
 
   const changeUserRole = async (id: string, newRole: 'admin' | 'agent', userEmail: string) => {
+    if (!orgId) return;
     if (userEmail.toLowerCase() === PRIMARY_ADMIN_EMAIL.toLowerCase()) {
       toast.error('O papel do administrador principal não pode ser alterado.');
       return;
     }
     if (userEmail === currentUserEmail) {
-      toast.error('Você não pode alterar seu próprio papel para evitar perda de acesso.');
+      toast.error('Você não pode alterar seu próprio papel.');
       return;
     }
     try {
-      await updateDoc(doc(db, 'users', id), { role: newRole });
+      await updateDoc(doc(db, 'organizations', orgId, 'users', id), { role: newRole });
       toast.success(`Papel alterado para ${newRole === 'admin' ? 'Administrador' : 'Atendente'}`);
     } catch (error) {
       toast.error('Erro ao alterar papel.');
@@ -92,13 +95,14 @@ export default function TeamManager({ currentUserEmail }: TeamManagerProps) {
   };
 
   const deleteUser = async (id: string, userEmail: string) => {
+    if (!orgId) return;
     if (userEmail.toLowerCase() === PRIMARY_ADMIN_EMAIL.toLowerCase()) {
       toast.error('O administrador principal não pode ser excluído.');
       return;
     }
-    if (!confirm('Deseja remover este usuário do sistema?')) return;
+    if (!confirm('Deseja remover este usuário?')) return;
     try {
-      await deleteDoc(doc(db, 'users', id));
+      await deleteDoc(doc(db, 'organizations', orgId, 'users', id));
       toast.success('Usuário removido.');
     } catch (error) {
       toast.error('Erro ao remover usuário.');
@@ -114,9 +118,9 @@ export default function TeamManager({ currentUserEmail }: TeamManagerProps) {
         </div>
         <div className="flex items-center gap-3">
           <div className="bg-blue-50 px-4 py-2 rounded-xl border border-blue-100 flex items-center gap-3">
-            <div className="text-[10px] font-bold text-blue-600 uppercase tracking-wider">Link de Acesso</div>
-            <code className="text-xs text-blue-700 bg-white px-2 py-1 rounded border border-blue-200">{APP_URL}</code>
-            <button onClick={copyAppUrl} className="p-1.5 text-blue-600 hover:bg-white rounded-lg transition-all">
+            <div className="text-[10px] font-bold text-blue-600 uppercase tracking-wider">Link do Portal</div>
+            <code className="text-xs text-blue-700 bg-white px-2 py-1 rounded border border-blue-200">{PORTAL_URL}</code>
+            <button onClick={copyPortalUrl} className="p-1.5 text-blue-600 hover:bg-white rounded-lg transition-all">
               <Copy className="w-4 h-4" />
             </button>
           </div>

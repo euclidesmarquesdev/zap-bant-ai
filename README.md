@@ -1,4 +1,5 @@
 # 🤖 WhatsApp AI Sales Agent - BANT Methodology
+**Versão: 2.5.0-SaaS**
 
 Este é um sistema avançado de automação de vendas via WhatsApp, integrando a inteligência do **Google Gemini AI** com a robustez do **Firebase** e a versatilidade da biblioteca **Baileys**. O foco principal é a qualificação de leads utilizando a metodologia **BANT** (Budget, Authority, Need, Timeline).
 
@@ -7,7 +8,7 @@ Este é um sistema avançado de automação de vendas via WhatsApp, integrando a
 ## 🚀 Stack Tecnológica
 
 *   **Frontend**: React 18 + TypeScript + Vite
-*   **Backend**: Node.js + Express (Full-stack)
+*   **Backend**: Node.js + Express (Full-stack) + Socket.io
 *   **IA**: Google Gemini AI (Modelos Flash 1.5/2.0)
 *   **Banco de Dados**: Firebase Firestore (Real-time)
 *   **Autenticação**: Firebase Auth (Google Login)
@@ -17,13 +18,25 @@ Este é um sistema avançado de automação de vendas via WhatsApp, integrando a
 
 ---
 
-## ✨ Principais Recursos
+## ✨ Principais Recursos (SaaS Multi-Tenant)
+
+### 🏢 Arquitetura Multi-Tenant & Monetização
+*   **Isolamento Total**: Cada organização (`orgId`) possui seus próprios leads, mensagens, agentes e configurações.
+*   **Super Admin Dashboard**: Controle global da plataforma, gestão de faturamento (MRR) e ativação/desativação de instâncias.
+*   **Gestão de Licenciamento**: Sistema de planos (Basic, Pro, Enterprise) integrado com lógica de checkout.
+*   **Instâncias Dinâmicas**: Cada cliente conecta seu próprio número de WhatsApp de forma independente.
 
 ### 🧠 Inteligência Artificial (RAG)
 *   **Processamento de Linguagem Natural**: Respostas humanas e contextuais.
 *   **Memória de Curto Prazo**: Mantém o contexto das últimas 10 mensagens.
 *   **Zero Alucinação**: Regras rígidas para responder apenas o que está no catálogo (`SHOP.md`).
 *   **Status de Digitação**: Ativa o "Digitando..." no WhatsApp enquanto a IA processa a resposta.
+
+## 📁 Estrutura de Componentes
+
+*   `📄 Sidebar.tsx` — 🧭 Menu lateral com suporte a Super Admin e Licenciamento.
+*   `📄 SuperAdminDashboard.tsx` — 👑 Painel global para gestão de todas as organizações e faturamento.
+*   `📄 LicenseManager.tsx` — 💳 Gestão de planos e assinaturas para administradores de instâncias.
 
 ### 📊 Painel de Controle (Dashboard)
 *   **Gestão de Leads**: Visualização clara do score de cada lead e status do funil.
@@ -32,14 +45,27 @@ Este é um sistema avançado de automação de vendas via WhatsApp, integrando a
 *   **Kanban**: Fluxo visual de vendas (Novo -> Atendido -> Negociação -> Fechamento).
 
 ### ⚙️ Gestão de Agentes e Regras
-*   **Editor AGENT.md**: Configure a personalidade e o tom de voz do seu robô.
+*   **Editor AGENT.md**: Configure a personalidade e o tom de voz do seu robô por organização.
 *   **Editor SHOP.md**: Gerencie produtos, preços e links de pagamento diretamente no painel.
-*   **Sincronização Real-time**: Alterações nas regras são aplicadas instantaneamente via Firestore.
+*   **Mensagens de Boas-vindas**: Envio automático de textos e mídias (Imagens, Vídeos, PDFs) para novos contatos.
 
-### 🔌 Conectividade
-*   **WhatsApp Multi-device**: Conexão via QR Code estável.
-*   **Mapeamento de LIDs**: Sistema inteligente para converter IDs temporários do WhatsApp em números reais.
-*   **Notificações**: Alertas automáticos quando um lead solicita atendimento humano.
+---
+
+## 📡 API Completa
+
+O sistema expõe uma API REST para integração e controle das instâncias.
+
+### 📱 WhatsApp
+*   `GET /api/whatsapp/status?orgId={id}`: Retorna o status da conexão e o QR Code atual.
+*   `POST /api/whatsapp/connect`: Inicia o processo de conexão para uma organização.
+*   `POST /api/whatsapp/disconnect`: Finaliza a sessão e limpa os dados de autenticação.
+*   `POST /api/whatsapp/send`: Envia uma mensagem de texto.
+    *   Body: `{ "orgId": "...", "to": "5511...", "message": "..." }`
+
+### ⚙️ Configurações & Treinamento
+*   `GET /api/training`: Retorna os templates globais de `AGENT.md` e `SHOP.md`.
+*   `GET /api/config`: Retorna a configuração atual do Firebase.
+*   `POST /api/config`: Salva novas credenciais do Firebase e atualiza o admin principal.
 
 ---
 

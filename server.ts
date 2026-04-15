@@ -15,6 +15,14 @@ import makeWASocket, {
 import { Boom } from "@hapi/boom";
 import pino from "pino";
 
+interface Session {
+  sock: any;
+  qr: string;
+  isReady: boolean;
+  userPhone: string;
+  streamErrorCount: number;
+}
+
 async function startServer() {
   const app = express();
   const httpServer = createServer(app);
@@ -29,57 +37,66 @@ async function startServer() {
   app.use(express.json());
 
   const PORT = 3000;
+  const sessions = new Map<string, Session>();
+  const lidMaps = new Map<string, Map<string, string>>();
 
-  // WhatsApp Connection Logic
-  let sock: any;
-  let qrCodeData = "";
-  let isReady = false;
-
-  // Map to store LID to real JID mapping
-  const lidMap = new Map<string, string>();
-  const LID_MAP_PATH = path.join(process.cwd(), 'lid-map.json');
-
-  // Load lidMap from file
-  try {
-    if (fs.existsSync(LID_MAP_PATH)) {
-      const data = JSON.parse(fs.readFileSync(LID_MAP_PATH, 'utf-8'));
-      Object.entries(data).forEach(([lid, jid]) => lidMap.set(lid, jid as string));
-      console.log(`LID MAP LOADED: ${lidMap.size} entries`);
-    }
-  } catch (e) {
-    console.error('Error loading LID map:', e);
+  function getLidMapPath(orgId: string) {
+    const dir = path.join(process.cwd(), 'data', orgId);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    return path.join(dir, 'lid-map.json');
   }
 
-  function saveLidMap() {
+  function loadLidMap(orgId: string) {
+    const path = getLidMapPath(orgId);
+    const map = new Map<string, string>();
     try {
-      const data = Object.fromEntries(lidMap);
-      fs.writeFileSync(LID_MAP_PATH, JSON.stringify(data, null, 2));
-    } catch (e) {
-      console.error('Error saving LID map:', e);
-    }
+      if (fs.existsSync(path)) {
+        const data = JSON.parse(fs.readFileSync(path, 'utf-8'));
+        Object.entries(data).forEach(([lid, jid]) => map.set(lid, jid as string));
+      }
+    } catch (e) {}
+    lidMaps.set(orgId, map);
+    return map;
   }
 
-  let streamErrorCount = 0;
+  function saveLidMap(orgId: string) {
+    const map = lidMaps.get(orgId);
+    if (!map) return;
+    try {
+      const data = Object.fromEntries(map);
+      fs.writeFileSync(getLidMapPath(orgId), JSON.stringify(data, null, 2));
+    } catch (e) {}
+  }
 
-  const connectToWhatsApp = async () => {
-    console.log('WhatsApp: Starting connection process...');
-    const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
+  const connectToWhatsApp = async (orgId: string) => {
+    console.log(`WhatsApp [${orgId}]: Starting connection process...`);
+    const authPath = path.join(process.cwd(), 'data', orgId, 'auth_info');
+    if (!fs.existsSync(authPath)) fs.mkdirSync(authPath, { recursive: true });
+
+    const { state, saveCreds } = await useMultiFileAuthState(authPath);
     const { version } = await fetchLatestBaileysVersion();
+    const lidMap = loadLidMap(orgId);
 
-    sock = makeWASocket({
+    const sock = makeWASocket({
       version,
-      printQRInTerminal: true,
+      printQRInTerminal: false,
       auth: {
         creds: state.creds,
         keys: makeCacheableSignalKeyStore(state.keys, pino({ level: 'silent' })),
       },
       logger: pino({ level: 'silent' }),
-      browser: ["Ubuntu", "Chrome", "20.0.04"],
+      browser: ["ZapBant AI", "Chrome", "1.0.0"],
       markOnlineOnConnect: true,
-      connectTimeoutMs: 60000,
-      defaultQueryTimeoutMs: 0,
-      keepAliveIntervalMs: 10000,
     });
+
+    const session: Session = {
+      sock,
+      qr: "",
+      isReady: false,
+      userPhone: "",
+      streamErrorCount: 0
+    };
+    sessions.set(orgId, session);
 
     sock.ev.on('creds.update', saveCreds);
 
@@ -87,167 +104,36 @@ async function startServer() {
       const { connection, lastDisconnect, qr } = update;
       
       if (qr) {
-        console.log('WhatsApp: QR RECEIVED');
         qrcode.toDataURL(qr, (err, url) => {
-          if (err) {
-            console.error('Error generating QR DataURL:', err);
-            return;
+          if (!err) {
+            session.qr = url;
+            io.to(orgId).emit('whatsapp:qr', url);
           }
-          qrCodeData = url;
-          io.emit('whatsapp:qr', url);
         });
       }
 
       if (connection === 'close') {
         const statusCode = (lastDisconnect?.error as Boom)?.output?.statusCode;
-        const errorMessage = lastDisconnect?.error?.message || "";
         const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-        
-        console.log('WhatsApp: Conexão fechada. Código:', statusCode, 'Erro:', errorMessage);
+        session.isReady = false;
 
-        // Cleanup current socket listeners to prevent memory leaks and duplicate connections
-        if (sock) {
-          sock.ev.removeAllListeners('connection.update');
-          sock.ev.removeAllListeners('creds.update');
-          sock.ev.removeAllListeners('messages.upsert');
-        }
-
-        // Erro 401 ou LoggedOut: Reset total da sessão
         if (statusCode === DisconnectReason.loggedOut || statusCode === 401) {
-          console.log('WhatsApp: Sessão inválida ou deslogada. Limpando e gerando novo QR...');
-          isReady = false;
-          qrCodeData = "";
-          streamErrorCount = 0;
-          io.emit('whatsapp:qr', "");
-          
-          const authPath = path.join(process.cwd(), 'auth_info_baileys');
-          if (fs.existsSync(authPath)) {
-            try {
-              fs.rmSync(authPath, { recursive: true, force: true });
-            } catch (e) {
-              console.error('Error clearing auth folder:', e);
-            }
-          }
-          
-          setTimeout(() => connectToWhatsApp(), 2000);
-        } 
-        // Erro 515 ou Stream Errored: Reinício com backoff exponencial
-        else if (statusCode === 515 || errorMessage.includes('Stream Errored')) {
-          streamErrorCount++;
-          const delay = Math.min(1000 * Math.pow(2, streamErrorCount), 30000);
-          console.log(`WhatsApp: Erro de Stream (515) - Tentativa ${streamErrorCount}. Reiniciando em ${delay}ms...`);
-          isReady = false;
-          
-          if (streamErrorCount > 5) {
-            console.log('WhatsApp: Erro 515 persistente após 5 tentativas. Limpando sessão para forçar novo QR...');
-            const authPath = path.join(process.cwd(), 'auth_info_baileys');
-            if (fs.existsSync(authPath)) {
-              try { fs.rmSync(authPath, { recursive: true, force: true }); } catch (e) {}
-            }
-            streamErrorCount = 0;
-          }
-          
-          setTimeout(() => connectToWhatsApp(), delay);
-        }
-        // Outros erros: Tentativa de reconexão padrão
-        else {
-          const delay = 5000;
-          console.log(`WhatsApp: Tentando reconectar em ${delay}ms...`, shouldReconnect);
-          isReady = false;
-          if (shouldReconnect) {
-            setTimeout(() => connectToWhatsApp(), delay);
-          }
+          session.qr = "";
+          io.to(orgId).emit('whatsapp:qr', "");
+          if (fs.existsSync(authPath)) fs.rmSync(authPath, { recursive: true, force: true });
+          setTimeout(() => connectToWhatsApp(orgId), 2000);
+        } else {
+          setTimeout(() => connectToWhatsApp(orgId), 5000);
         }
       } else if (connection === 'open') {
-        console.log('WhatsApp: Connection opened successfully');
-        isReady = true;
-        qrCodeData = "";
-        streamErrorCount = 0;
-        
-        // Set presence to available to help with notifications
-        try {
-          await sock.sendPresenceUpdate('available');
-        } catch (e) {}
-        
-        // Extrair o número do usuário conectado
-        let userPhone = "";
-        try {
-          const me = sock?.authState?.creds?.me;
-          if (me) {
-            const rawId = typeof me === 'string' ? me : (me.id || "");
-            userPhone = rawId.split('@')[0].split(':')[0];
-            console.log(`WhatsApp: USER CONNECTED: ${userPhone}`);
-          }
-        } catch (err) {
-          console.error('WhatsApp: Error getting user phone:', err);
+        session.isReady = true;
+        session.qr = "";
+        const me = sock?.authState?.creds?.me;
+        if (me) {
+          session.userPhone = (typeof me === 'string' ? me : (me.id || "")).split('@')[0].split(':')[0];
         }
-        
-        io.emit('whatsapp:ready', { userPhone });
+        io.to(orgId).emit('whatsapp:ready', { userPhone: session.userPhone });
       }
-    });
-
-    sock.ev.on('contacts.upsert', (contacts: any) => {
-      contacts.forEach((c: any) => {
-        if (c.id && c.lid) {
-          const cleanLid = c.lid.split('@')[0];
-          const cleanJid = c.id.split('@')[0];
-          if (lidMap.get(cleanLid) !== cleanJid) {
-            lidMap.set(cleanLid, cleanJid);
-            console.log(`MAPPING LID ${cleanLid} TO JID ${cleanJid}`);
-            saveLidMap();
-          }
-        }
-      });
-    });
-
-    sock.ev.on('messaging-history.set', ({ contacts }: any) => {
-      if (contacts) {
-        let changed = false;
-        contacts.forEach((c: any) => {
-          if (c.id && c.lid) {
-            const cleanLid = c.lid.split('@')[0];
-            const cleanJid = c.id.split('@')[0];
-            if (lidMap.get(cleanLid) !== cleanJid) {
-              lidMap.set(cleanLid, cleanJid);
-              changed = true;
-            }
-          }
-        });
-        if (changed) saveLidMap();
-        console.log(`HISTORY SET: Mapped ${contacts.length} contacts. Total map size: ${lidMap.size}`);
-      }
-    });
-
-    sock.ev.on('contacts.upsert', (contacts: any) => {
-      let changed = false;
-      contacts.forEach((c: any) => {
-        if (c.id && c.lid) {
-          const cleanLid = c.lid.split('@')[0];
-          const cleanJid = c.id.split('@')[0];
-          if (lidMap.get(cleanLid) !== cleanJid) {
-            lidMap.set(cleanLid, cleanJid);
-            changed = true;
-          }
-        }
-      });
-      if (changed) {
-        console.log(`CONTACTS UPSERT: Mapped ${contacts.length} contacts.`);
-        saveLidMap();
-      }
-    });
-
-    sock.ev.on('contacts.update', (updates: any) => {
-      updates.forEach((u: any) => {
-        if (u.id && u.lid) {
-          const cleanLid = u.lid.split('@')[0];
-          const cleanJid = u.id.split('@')[0];
-          if (lidMap.get(cleanLid) !== cleanJid) {
-            lidMap.set(cleanLid, cleanJid);
-            console.log(`UPDATE MAPPING LID ${cleanLid} TO JID ${cleanJid}`);
-            saveLidMap();
-          }
-        }
-      });
     });
 
     sock.ev.on('messages.upsert', async (m: any) => {
@@ -255,87 +141,19 @@ async function startServer() {
         for (const msg of m.messages) {
           if (!msg.key.fromMe && msg.message) {
             const remoteJid = msg.key.remoteJid;
-            
-            // IGNORE GROUP MESSAGES
-            if (remoteJid?.endsWith('@g.us')) {
-              console.log('WhatsApp: Ignoring group message from', remoteJid);
-              continue;
-            }
+            if (remoteJid?.endsWith('@g.us')) continue;
 
-            const participant = msg.key.participant;
-            const pushName = msg.pushName || "";
-
-            // Dynamic mapping if we see both LID and JID in the same message
-            if (remoteJid?.includes('@lid') && participant?.includes('@s.whatsapp.net')) {
-              const cleanLid = remoteJid.split('@')[0].split(':')[0];
-              const cleanJid = participant.split('@')[0].split(':')[0];
-              if (lidMap.get(cleanLid) !== cleanJid) {
-                lidMap.set(cleanLid, cleanJid);
-                saveLidMap();
-                console.log(`DYNAMIC MAPPING LID ${cleanLid} TO JID ${cleanJid}`);
-              }
-            }
-            
-            // Extract real phone number from JID
-            const extractPhone = (jid: string) => {
-              if (!jid) return "";
-              const parts = jid.split('@');
-              if (parts.length < 2) return jid;
-              
-              const clean = parts[0].split(':')[0];
-              const domain = parts[1];
-
-              // If it's a standard WhatsApp JID, it's the phone number
-              if (domain === 's.whatsapp.net') {
-                return clean;
-              }
-
-              // Check if we have a mapping for this LID
-              if (lidMap.has(clean)) {
-                const mapped = lidMap.get(clean)!;
-                return mapped;
-              }
-              
-              return clean;
-            };
-
-            const from = extractPhone(remoteJid || participant);
-            const chatId = remoteJid;
-            const originalLid = remoteJid?.includes('@lid') ? remoteJid.split('@')[0].split(':')[0] : null;
-            
-            console.log('DEBUG: remoteJid:', remoteJid, 'participant:', participant, 'from:', from, 'lid:', originalLid);
-            
-            // Try to fetch profile picture
-            let profilePicUrl = "";
-            try {
-              profilePicUrl = await sock.profilePictureUrl(remoteJid, 'image');
-            } catch (e) {
-              // No profile pic or restricted
-            }
-            
-            const body = msg.message.conversation || 
-                         msg.message.extendedTextMessage?.text || 
-                         msg.message.imageMessage?.caption || "";
-            
+            const body = msg.message.conversation || msg.message.extendedTextMessage?.text || "";
             if (body) {
-              console.log('MESSAGE RECEIVED', body, 'FROM', from, 'LID', originalLid);
-              
-              // Mark as read (blue ticks)
-              try {
-                await sock.readMessages([msg.key]);
-              } catch (err) {
-                console.error('Error marking message as read:', err);
-              }
-
-              io.emit('whatsapp:message', {
+              const from = remoteJid?.split('@')[0].split(':')[0];
+              io.to(orgId).emit('whatsapp:message', {
                 id: msg.key.id,
                 from,
-                lid: originalLid,
-                chatId,
-                pushName,
-                profilePicUrl,
+                chatId: remoteJid,
+                pushName: msg.pushName || "",
                 body,
-                timestamp: new Date().toISOString()
+                timestamp: new Date().toISOString(),
+                orgId
               });
             }
           }
@@ -344,234 +162,130 @@ async function startServer() {
     });
   };
 
-  connectToWhatsApp();
-
   // API Routes
   app.get("/api/whatsapp/status", (req, res) => {
-    res.json({ isReady, qrCodeData });
+    const { orgId } = req.query;
+    if (!orgId) return res.status(400).json({ error: "orgId required" });
+    const session = sessions.get(orgId as string);
+    res.json({ 
+      isReady: session?.isReady || false, 
+      qrCodeData: session?.qr || "" 
+    });
   });
 
-  app.post("/api/whatsapp/send", async (req, res) => {
-    let { to, message, mediaUrl, mediaType, fileName, contact } = req.body;
-    if (!isReady || !sock) return res.status(400).json({ error: "WhatsApp not ready" });
+  app.post("/api/whatsapp/connect", (req, res) => {
+    const { orgId } = req.body;
+    if (!orgId) return res.status(400).json({ error: "orgId required" });
     
-    try {
-      // Ensure 'to' is a proper JID and handle LID mapping
-      let targetJid = to;
-      
-      // If it's just a number, format it
-      if (to && !to.includes('@')) {
-        targetJid = `${to.replace(/\D/g, '')}@s.whatsapp.net`;
-      } 
-      // If it's a LID, try to resolve it to a real JID
-      else if (to && to.includes('@lid')) {
-        const cleanLid = to.split('@')[0].split(':')[0];
-        if (lidMap.has(cleanLid)) {
-          const mappedJid = lidMap.get(cleanLid);
-          console.log(`WhatsApp: Resolving LID ${to} to JID ${mappedJid}@s.whatsapp.net`);
-          targetJid = `${mappedJid}@s.whatsapp.net`;
-        } else {
-          console.log(`WhatsApp: LID ${to} not found in map, sending to LID directly (might create ghost contact)`);
-        }
-      }
-      
-      console.log(`SENDING MESSAGE TO ${targetJid}: ${message ? message.substring(0, 20) + '...' : ''} (Media: ${mediaType}, Contact: ${!!contact})`);
-      
-      // Mostrar "Digitando..." antes de enviar
-      await sock.sendPresenceUpdate('composing', targetJid);
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      if (contact) {
-        // Send Contact Card (vCard)
-        const cleanPhone = contact.phone.replace(/\D/g, '');
-        const vcard = 'BEGIN:VCARD\n' +
-                     'VERSION:3.0\n' +
-                     `FN:${contact.name}\n` +
-                     `TEL;type=CELL;type=VOICE;waid=${cleanPhone}:+${cleanPhone}\n` +
-                     'END:VCARD';
-        
-        await sock.sendMessage(targetJid, {
-          contacts: {
-            displayName: contact.name,
-            contacts: [{ vcard }]
-          }
-        });
-      }
+    const session = sessions.get(orgId);
+    if (!session) {
+      console.log(`WhatsApp [${orgId}]: No session found, creating new...`);
+      connectToWhatsApp(orgId);
+    } else {
+      console.log(`WhatsApp [${orgId}]: Session already exists. Ready: ${session.isReady}, Has QR: ${!!session.qr}`);
+      // If session exists but is stuck without QR and not ready, we could force reconnect
+      // but Baileys usually handles this. We'll just emit current state.
+      if (session.qr) io.to(orgId).emit('whatsapp:qr', session.qr);
+      if (session.isReady) io.to(orgId).emit('whatsapp:ready', { userPhone: session.userPhone });
+    }
+    res.json({ success: true });
+  });
 
-      if (mediaUrl && mediaType && mediaType !== 'none') {
-        const options: any = {};
-        if (mediaType === 'image') {
-          options.image = { url: mediaUrl };
-          options.caption = message;
-        } else if (mediaType === 'video') {
-          options.video = { url: mediaUrl };
-          options.caption = message;
-        } else if (mediaType === 'document') {
-          options.document = { url: mediaUrl };
-          options.mimetype = 'application/pdf'; 
-          options.fileName = fileName || 'documento.pdf';
-          options.caption = message;
-        }
-        await sock.sendMessage(targetJid, options);
-      } else if (message) {
-        await sock.sendMessage(targetJid, { text: message });
+  app.post("/api/whatsapp/disconnect", async (req, res) => {
+    const { orgId } = req.body;
+    if (!orgId) return res.status(400).json({ error: "orgId required" });
+    const session = sessions.get(orgId);
+    if (session) {
+      try {
+        await session.sock.logout();
+        sessions.delete(orgId);
+        const authPath = path.join(process.cwd(), 'data', orgId, 'auth_info');
+        if (fs.existsSync(authPath)) fs.rmSync(authPath, { recursive: true, force: true });
+        res.json({ success: true });
+      } catch (e: any) {
+        res.status(500).json({ error: e.message });
       }
-      
-      await sock.sendPresenceUpdate('paused', targetJid);
-      
+    } else {
       res.json({ success: true });
-    } catch (error: any) {
-      console.error('ERROR SENDING MESSAGE:', error);
-      res.status(500).json({ error: error.message });
     }
   });
 
-  // Firebase Configuration Endpoints
-  const CONFIG_PATH = path.join(process.cwd(), 'firebase-applet-config.json');
-
   app.get("/api/config", (req, res) => {
     try {
-      if (fs.existsSync(CONFIG_PATH)) {
-        const config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'));
-        // Don't send the full config if it's just placeholders
-        if (config.apiKey === "TODO_KEYHERE") {
-          return res.json(null);
-        }
-        res.json(config);
-      } else {
-        res.json(null);
-      }
+      const config = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'firebase-applet-config.json'), 'utf-8'));
+      // Only send non-sensitive info to the frontend settings page
+      const publicConfig = {
+        projectId: config.projectId,
+        firestoreDatabaseId: config.firestoreDatabaseId
+      };
+      res.json(publicConfig);
     } catch (e) {
-      res.json(null);
+      res.status(500).json({ error: "Failed to read config" });
     }
   });
 
   app.post("/api/config", (req, res) => {
     try {
       const config = req.body;
-      fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
+      fs.writeFileSync(path.join(process.cwd(), 'firebase-applet-config.json'), JSON.stringify(config, null, 2));
+      
+      // Also update adminEmail in firebase.ts if provided
+      if (config.adminEmail) {
+        const firebaseTsPath = path.join(process.cwd(), 'src', 'firebase.ts');
+        let content = fs.readFileSync(firebaseTsPath, 'utf-8');
+        content = content.replace(/export const adminEmail = ".*";/, `export const adminEmail = "${config.adminEmail}";`);
+        fs.writeFileSync(firebaseTsPath, content);
+      }
+      
+      res.json({ success: true });
+    } catch (e) {
+      res.status(500).json({ error: "Failed to save config" });
+    }
+  });
+
+  app.post("/api/whatsapp/send", async (req, res) => {
+    const { orgId, to, message } = req.body;
+    const session = sessions.get(orgId);
+    if (!session || !session.isReady) return res.status(400).json({ error: "WhatsApp not ready" });
+    
+    try {
+      let targetJid = to.includes('@') ? to : `${to}@s.whatsapp.net`;
+      await session.sock.sendMessage(targetJid, { text: message });
       res.json({ success: true });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
   });
 
-  // Read training files
   app.get("/api/training", (req, res) => {
     try {
-      const agentMd = fs.readFileSync(path.join(process.cwd(), "AGENT.md"), "utf-8");
-      const shopMd = fs.readFileSync(path.join(process.cwd(), "SHOP.md"), "utf-8");
+      const agentMd = fs.readFileSync(path.join(process.cwd(), 'AGENT.md'), 'utf-8');
+      const shopMd = fs.readFileSync(path.join(process.cwd(), 'SHOP.md'), 'utf-8');
       res.json({ agentMd, shopMd });
     } catch (error) {
-      res.status(500).json({ error: "Failed to read training files" });
+      res.json({ agentMd: '', shopMd: '' });
     }
   });
 
-  app.post("/api/whatsapp/disconnect", async (req, res) => {
-    try {
-      if (sock) {
-        try {
-          await sock.logout();
-        } catch (e) {}
-        sock.end(undefined);
-      }
-      
-      // Remove auth folder
-      const authPath = path.join(process.cwd(), 'auth_info_baileys');
-      if (fs.existsSync(authPath)) {
-        fs.rmSync(authPath, { recursive: true, force: true });
-      }
-      
-      isReady = false;
-      qrCodeData = "";
-      io.emit('whatsapp:qr', ""); // Clear QR on clients
-      
-      console.log('WhatsApp: Disconnected and session cleared. Restarting for new QR...');
-      
-      // Restart connection process to generate new QR
-      setTimeout(() => {
-        connectToWhatsApp();
-      }, 2000);
-
-      res.json({ success: true });
-    } catch (error: any) {
-      console.error('Error disconnecting:', error);
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  // Vite middleware for development
+  // Vite middleware
   if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
+    const vite = await createViteServer({ server: { middlewareMode: true }, appType: "spa" });
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
-    });
+    app.get('*', (req, res) => res.sendFile(path.join(distPath, 'index.html')));
   }
 
-  httpServer.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-  });
+  httpServer.listen(PORT, "0.0.0.0", () => console.log(`Server running on port ${PORT}`));
 
-  // Socket events from frontend
   io.on('connection', (socket) => {
-    console.log('A user connected');
-    if (qrCodeData) socket.emit('whatsapp:qr', qrCodeData);
-    if (isReady) {
-      let userPhone = "";
-      try {
-        if (sock?.authState?.creds?.me) {
-          const meJid = sock.authState.creds.me.id || sock.authState.creds.me;
-          userPhone = (typeof meJid === 'string' ? meJid : meJid.id).split('@')[0].split(':')[0];
-        }
-      } catch (e) {}
-      socket.emit('whatsapp:ready', { userPhone });
-    }
-
-    socket.on('whatsapp:typing', async (data) => {
-      const { to, status } = data; // status: 'composing' or 'paused'
-      if (isReady && sock) {
-        try {
-          let targetJid = to;
-          if (to && !to.includes('@')) {
-            targetJid = to.length > 15 ? `${to}@lid` : `${to}@s.whatsapp.net`;
-          }
-          await sock.sendPresenceUpdate(status, targetJid);
-        } catch (err) {
-          console.error('Error sending typing status:', err);
-        }
-      }
-    });
-
-    socket.on('ai:response', async (data) => {
-      let { to, message } = data;
-      console.log('AI RESPONSE TO SEND', to, message);
-      if (isReady && sock) {
-        try {
-          // Ensure 'to' is a proper JID
-          let targetJid = to;
-          if (to && !to.includes('@')) {
-            if (to.length > 15) {
-              targetJid = `${to}@lid`;
-            } else {
-              targetJid = `${to}@s.whatsapp.net`;
-            }
-          }
-
-          // Enviar a mensagem (o status de digitando já foi iniciado pelo frontend)
-          await sock.sendMessage(targetJid, { text: message });
-
-          // Parar "Digitando..."
-          await sock.sendPresenceUpdate('paused', targetJid);
-        } catch (err) {
-          console.error('Error sending AI message:', err);
-        }
+    socket.on('join', (orgId) => {
+      socket.join(orgId);
+      const session = sessions.get(orgId);
+      if (session) {
+        if (session.qr) socket.emit('whatsapp:qr', session.qr);
+        if (session.isReady) socket.emit('whatsapp:ready', { userPhone: session.userPhone });
       }
     });
   });

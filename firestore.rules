@@ -6,52 +6,86 @@ service cloud.firestore {
       return request.auth != null;
     }
     
-    function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
-    }
-
-    function isAdmin() {
+    function isSuperAdmin() {
       return isAuthenticated() && 
-        (request.auth.token.email == "euclidesmarques.dev@gmail.com" || 
-         request.auth.token.email == "euclidesmarques.dev@gmail" ||
-         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'));
+        (request.auth.token.email == "euclidesmarques.dev@gmail.com");
     }
 
-    function isAgent() {
-      return isAuthenticated() && 
-        exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'agent';
+    function isOrgMember(orgId) {
+      return isAuthenticated() && (
+        isSuperAdmin() ||
+        request.auth.token.orgId == orgId || 
+        exists(/databases/$(database)/documents/organizations/$(orgId)/users/$(request.auth.uid))
+      );
     }
 
+    function isOrgAdmin(orgId) {
+      return isAuthenticated() && (
+        isSuperAdmin() || 
+        (exists(/databases/$(database)/documents/organizations/$(orgId)/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/organizations/$(orgId)/users/$(request.auth.uid)).data.role == 'admin')
+      );
+    }
+
+    function isOrgAgent(orgId) {
+      return isOrgMember(orgId) && 
+        exists(/databases/$(database)/documents/organizations/$(orgId)/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/organizations/$(orgId)/users/$(request.auth.uid)).data.role == 'agent';
+    }
+
+    // Global Users (Mapping UID to Org)
     match /users/{userId} {
-      allow read: if isAuthenticated();
-      allow write: if isOwner(userId) || isAdmin();
+      allow read: if isOwner(userId) || isSuperAdmin();
+      allow write: if isOwner(userId) || isSuperAdmin();
     }
 
-    match /leads/{leadId} {
-      allow read: if isAdmin() || (isAgent() && resource.data.assignedTo == request.auth.uid);
-      allow write: if isAuthenticated(); // AI Agent and Dashboard need to write
-      
-      match /messages/{messageId} {
-        allow read: if isAdmin() || (isAgent() && get(/databases/$(database)/documents/leads/$(leadId)).data.assignedTo == request.auth.uid);
-        allow write: if isAuthenticated();
+    // Organizations
+    match /organizations/{orgId} {
+      allow read: if isOrgMember(orgId) || isSuperAdmin();
+      allow create: if isAuthenticated(); // Anyone can create an org
+      allow update, delete: if isOrgAdmin(orgId);
+
+      // Users within Org
+      match /users/{userId} {
+        allow read: if isOrgMember(orgId);
+        allow write: if isOrgAdmin(orgId) || 
+                      (isOwner(userId) && 
+                       exists(/databases/$(database)/documents/users/$(userId)) &&
+                       get(/databases/$(database)/documents/users/$(userId)).data.orgId == orgId);
+      }
+
+      // Leads within Org
+      match /leads/{leadId} {
+        allow read: if isOrgAdmin(orgId) || (isOrgAgent(orgId) && resource.data.assignedTo == request.auth.uid);
+        allow write: if isOrgMember(orgId) || isAuthenticated(); // AI Agent needs to write
+
+        match /messages/{messageId} {
+          allow read: if isOrgAdmin(orgId) || (isOrgAgent(orgId) && get(/databases/$(database)/documents/organizations/$(orgId)/leads/$(leadId)).data.assignedTo == request.auth.uid);
+          allow write: if isOrgMember(orgId) || isAuthenticated();
+        }
+      }
+
+      // Agents (AI Models) within Org
+      match /agents/{agentId} {
+        allow read: if isOrgMember(orgId);
+        allow write: if isOrgAdmin(orgId);
+      }
+
+      // Settings within Org
+      match /settings/{settingId} {
+        allow read: if isOrgMember(orgId);
+        allow write: if isOrgAdmin(orgId);
+      }
+
+      // Human Agents within Org
+      match /human_agents/{agentId} {
+        allow read: if isOrgMember(orgId);
+        allow write: if isOrgAdmin(orgId);
       }
     }
 
-    match /agents/{agentId} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin();
-    }
-
-    match /settings/{settingId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated();
-    }
-
-    match /human_agents/{agentId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated();
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
     }
   }
 }

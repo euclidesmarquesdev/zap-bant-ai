@@ -21,7 +21,7 @@ export default function AuthScreen() {
       const { user } = await signInWithPopup(auth, googleProvider);
       const currentEmail = user.email?.toLowerCase().trim();
       const primaryAdminEmail = adminEmail.toLowerCase().trim();
-      const isPrimaryAdmin = currentEmail === primaryAdminEmail || currentEmail === "euclidesmarques.dev@gmail";
+      const isPrimaryAdmin = currentEmail === primaryAdminEmail;
 
       // Check for invited user doc or create new
       const usersRef = collection(db, 'users');
@@ -93,14 +93,14 @@ export default function AuthScreen() {
         const { user } = await signInWithEmailAndPassword(auth, email, password);
         const currentEmail = user.email?.toLowerCase().trim();
         const primaryAdminEmail = adminEmail.toLowerCase().trim();
-        const isPrimaryAdmin = currentEmail === primaryAdminEmail || currentEmail === "euclidesmarques.dev@gmail";
+        const isPrimaryAdmin = currentEmail === primaryAdminEmail;
         
         toast.success('Bem-vindo de volta!');
       } else if (mode === 'signup') {
         const { user } = await createUserWithEmailAndPassword(auth, email, password);
         const currentEmail = email.toLowerCase().trim();
         const primaryAdminEmail = adminEmail.toLowerCase().trim();
-        const isPrimaryAdmin = currentEmail === primaryAdminEmail || currentEmail === "euclidesmarques.dev@gmail";
+        const isPrimaryAdmin = currentEmail === primaryAdminEmail;
 
         await updateProfile(user, { displayName: name });
         

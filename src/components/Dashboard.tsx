@@ -14,11 +14,12 @@ interface DashboardProps {
   userPhone?: string;
   userRole?: 'admin' | 'agent' | null;
   userId?: string;
+  orgId?: string | null;
 }
 
 type Period = 'hoje' | '48h' | 'semana' | 'mes';
 
-export default function Dashboard({ onSelectLead, userPhone, userRole, userId }: DashboardProps) {
+export default function Dashboard({ onSelectLead, userPhone, userRole, userId, orgId }: DashboardProps) {
   const [leads, setLeads] = useState<any[]>([]);
   const [agents, setAgents] = useState<any[]>([]);
   const [period, setPeriod] = useState<Period>('semana');
@@ -29,6 +30,8 @@ export default function Dashboard({ onSelectLead, userPhone, userRole, userId }:
     e.preventDefault();
     e.stopPropagation();
     
+    if (!orgId) return;
+
     if (newStatus === 'delete') {
       setDeleteConfirmId(leadId);
       return;
@@ -36,7 +39,7 @@ export default function Dashboard({ onSelectLead, userPhone, userRole, userId }:
 
     try {
       const leadData = leads.find(l => l.id === leadId);
-      const leadRef = doc(db, 'leads', leadId);
+      const leadRef = doc(db, 'organizations', orgId, 'leads', leadId);
 
       const updateData: any = { 
         status: newStatus,
@@ -47,90 +50,42 @@ export default function Dashboard({ onSelectLead, userPhone, userRole, userId }:
         updateData.score = 0;
         updateData.bant = { budget: false, authority: false, need: false, timeline: false };
         updateData.lastMessage = "Atendimento resetado pelo administrador";
-        updateData.product = null;
       }
 
-      // Se estiver retomando o atendimento, envia mensagem automática
       if (newStatus === 'atendido') {
         const resumeMessage = "Olá! Estou retomando seu atendimento agora. Como posso te ajudar?";
-        
-        console.log('RETOMANDO ATENDIMENTO PARA:', leadId);
-
-        // Salva mensagem no Firestore
-        await addDoc(collection(db, 'leads', leadId, 'messages'), {
+        await addDoc(collection(db, 'organizations', orgId, 'leads', leadId, 'messages'), {
           text: resumeMessage,
           sender: 'ai',
-          timestamp: serverTimestamp()
+          timestamp: serverTimestamp(),
+          orgId
         });
 
-        // Envia via WhatsApp
-        const targetTo = leadData?.chatId || leadId;
-        try {
-          const response = await fetch('/api/whatsapp/send', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ to: targetTo, message: resumeMessage })
-          });
-          const resData = await response.json();
-          if (!resData.success) {
-            console.error('Failed to send WhatsApp message:', resData.error);
-            toast.error('Erro ao enviar mensagem de retomada via WhatsApp');
-          } else {
-            console.log('WhatsApp message sent successfully');
-          }
-        } catch (err) {
-          console.error('Fetch error sending WhatsApp message:', err);
-        }
-        
+        await fetch('/api/whatsapp/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ orgId, to: leadId, message: resumeMessage })
+        });
         updateData.lastMessage = resumeMessage;
       }
 
-      // Se estiver encaminhando para humano, envia mensagem automática
       if (newStatus === 'humano') {
-        const humanMessage = "Aguarde um momento. Estou encaminhando seu atendimento para um especialista humano que continuará a conversa com você em breve. 👨‍💻";
-        
-        console.log('ENCAMINHANDO PARA HUMANO:', leadId);
-
-        // Salva mensagem no Firestore
-        await addDoc(collection(db, 'leads', leadId, 'messages'), {
+        const humanMessage = "Aguarde um momento. Estou encaminhando seu atendimento para um especialista humano.";
+        await addDoc(collection(db, 'organizations', orgId, 'leads', leadId, 'messages'), {
           text: humanMessage,
           sender: 'ai',
-          timestamp: serverTimestamp()
+          timestamp: serverTimestamp(),
+          orgId
         });
 
-        // Envia via WhatsApp
-        const targetTo = leadData?.chatId || leadId;
-        try {
-          await fetch('/api/whatsapp/send', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ to: targetTo, message: humanMessage })
-          });
-
-          // Notifica o administrador no próprio WhatsApp
-          if (userPhone) {
-            const adminNotifyMessage = `🚨 ATENÇÃO: O lead ${leadData?.name || formatPhoneNumber(leadData?.phone || leadId)} solicitou atendimento humano. Verifique o painel!`;
-            await fetch('/api/whatsapp/send', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ to: `${userPhone}@s.whatsapp.net`, message: adminNotifyMessage })
-            });
-          }
-        } catch (err) {
-          console.error('Error sending human notification:', err);
-        }
-        
+        await fetch('/api/whatsapp/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ orgId, to: leadId, message: humanMessage })
+        });
         updateData.lastMessage = humanMessage;
-
-        // DISTRIBUIÇÃO AUTOMÁTICA DE ATENDENTES
-        const assignedAgent = await assignLeadToAgent(leadId, {
-          ...leadData,
-          ...updateData
-        });
-
-        if (assignedAgent) {
-          toast.info(`Lead encaminhado para ${assignedAgent.displayName || assignedAgent.name}`);
-        }
+        updateData.assignedTo = userId; // Assign to the admin/agent who clicked
+        updateData.isHumanAttending = true;
       }
 
       await updateDoc(leadRef, updateData);
@@ -142,58 +97,46 @@ export default function Dashboard({ onSelectLead, userPhone, userRole, userId }:
   };
 
   const confirmDelete = async (leadId: string) => {
+    if (!orgId) return;
     try {
       const batch = writeBatch(db);
-      const messagesRef = collection(db, 'leads', leadId, 'messages');
+      const messagesRef = collection(db, 'organizations', orgId, 'leads', leadId, 'messages');
       const messagesSnap = await getDocs(messagesRef);
-      messagesSnap.forEach((msgDoc) => {
-        batch.delete(msgDoc.ref);
-      });
-      batch.delete(doc(db, 'leads', leadId));
+      messagesSnap.forEach((msgDoc) => batch.delete(msgDoc.ref));
+      batch.delete(doc(db, 'organizations', orgId, 'leads', leadId));
       await batch.commit();
-      toast.success('Lead e mensagens excluídos com sucesso');
+      toast.success('Lead excluído');
       setDeleteConfirmId(null);
     } catch (error) {
       console.error('Error deleting lead:', error);
-      toast.error('Erro ao excluir lead');
     }
   };
 
   useEffect(() => {
-    if (!userRole || !userId) return;
+    if (!userRole || !userId || !orgId) return;
 
     let startDate: Date;
     const now = new Date();
 
     switch (period) {
-      case 'hoje':
-        startDate = startOfDay(now);
-        break;
-      case '48h':
-        startDate = subHours(now, 48);
-        break;
-      case 'semana':
-        startDate = subWeeks(now, 1);
-        break;
-      case 'mes':
-        startDate = subMonths(now, 1);
-        break;
-      default:
-        startDate = subWeeks(now, 1);
+      case 'hoje': startDate = startOfDay(now); break;
+      case '48h': startDate = subHours(now, 48); break;
+      case 'semana': startDate = subWeeks(now, 1); break;
+      case 'mes': startDate = subMonths(now, 1); break;
+      default: startDate = subWeeks(now, 1);
     }
 
     const fetchLeads = async () => {
       let q = query(
-        collection(db, 'leads'), 
+        collection(db, 'organizations', orgId, 'leads'), 
         where('updatedAt', '>=', Timestamp.fromDate(startDate)),
         orderBy('updatedAt', 'desc'),
         limit(50)
       );
 
-      // If agent, only show assigned leads
-      if (userRole === 'agent' && userId) {
+      if (userRole === 'agent') {
         q = query(
-          collection(db, 'leads'),
+          collection(db, 'organizations', orgId, 'leads'),
           where('assignedTo', '==', userId),
           where('updatedAt', '>=', Timestamp.fromDate(startDate)),
           orderBy('updatedAt', 'desc'),
@@ -203,18 +146,16 @@ export default function Dashboard({ onSelectLead, userPhone, userRole, userId }:
 
       try {
         const snapshot = await getDocs(q);
-        const leadsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        setLeads(leadsData);
+        setLeads(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       } catch (error) {
         console.error("Error fetching leads:", error);
       }
     };
 
     fetchLeads();
-    const interval = setInterval(fetchLeads, 30000); // 30s refresh
-
+    const interval = setInterval(fetchLeads, 30000);
     return () => clearInterval(interval);
-  }, [period, userRole, userId]);
+  }, [period, userRole, userId, orgId]);
 
   const stats = useMemo(() => {
     const total = leads.length;
@@ -235,13 +176,13 @@ export default function Dashboard({ onSelectLead, userPhone, userRole, userId }:
   }, [leads]);
 
   useEffect(() => {
-    if (userRole === 'admin') {
-      const unsubscribe = onSnapshot(collection(db, 'users'), (snap) => {
+    if (userRole === 'admin' && orgId) {
+      const unsubscribe = onSnapshot(collection(db, 'organizations', orgId, 'users'), (snap) => {
         setAgents(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       });
       return () => unsubscribe();
     }
-  }, [userRole]);
+  }, [userRole, orgId]);
 
   return (
     <div className="space-y-8">
@@ -273,14 +214,14 @@ export default function Dashboard({ onSelectLead, userPhone, userRole, userId }:
           <div className="md:col-span-2 lg:col-span-4 bg-blue-600 rounded-3xl p-6 text-white shadow-xl shadow-blue-200 flex flex-col md:flex-row items-center justify-between gap-6 overflow-hidden relative group">
             <div className="absolute top-0 right-0 -mr-16 -mt-16 w-64 h-64 bg-white/10 rounded-full blur-3xl group-hover:bg-white/20 transition-all duration-500"></div>
             <div className="relative z-10">
-              <h2 className="text-xl font-bold mb-1">Central de Atendimento Ativa</h2>
-              <p className="text-blue-100 text-sm">Compartilhe o link abaixo com sua equipe para que eles possam logar e atender os leads.</p>
+              <h2 className="text-xl font-bold mb-1">Portal do Atendente Ativo</h2>
+              <p className="text-blue-100 text-sm">Compartilhe o link abaixo com sua equipe para que eles possam logar e atender os leads desta organização.</p>
             </div>
             <div className="relative z-10 flex items-center gap-3 bg-white/10 backdrop-blur-md p-2 pl-4 rounded-2xl border border-white/20 w-full md:w-auto">
-              <code className="text-sm font-mono font-bold truncate max-w-[200px] md:max-w-none">{window.location.origin}</code>
+              <code className="text-sm font-mono font-bold truncate max-w-[200px] md:max-w-none">{`${window.location.origin}/login?org=${orgId}`}</code>
               <button 
                 onClick={() => {
-                  navigator.clipboard.writeText(window.location.origin);
+                  navigator.clipboard.writeText(`${window.location.origin}/login?org=${orgId}`);
                   toast.success('Link copiado!');
                 }}
                 className="p-2 bg-white text-blue-600 rounded-xl hover:bg-blue-50 transition-all shadow-lg"
@@ -384,10 +325,18 @@ export default function Dashboard({ onSelectLead, userPhone, userRole, userId }:
                         <div className="flex items-center gap-2">
                           {assignedAgent ? (
                             <div className="flex items-center gap-2">
-                              <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center text-[10px] font-bold text-blue-600">
-                                {assignedAgent.displayName?.[0] || assignedAgent.email?.[0]}
+                              <div className="relative">
+                                <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center text-[10px] font-bold text-blue-600">
+                                  {assignedAgent.displayName?.[0] || assignedAgent.email?.[0]}
+                                </div>
+                                {lead.status === 'humano' && (
+                                  <div className="absolute -top-1 -right-1 w-2 h-2 bg-orange-500 rounded-full border border-white animate-pulse" />
+                                )}
                               </div>
-                              <span className="text-xs font-medium text-slate-700">{assignedAgent.displayName || assignedAgent.email}</span>
+                              <div className="flex flex-col">
+                                <span className="text-xs font-medium text-slate-700">{assignedAgent.displayName || assignedAgent.email}</span>
+                                {lead.status === 'humano' && <span className="text-[8px] font-bold text-orange-600 uppercase">Em Atendimento</span>}
+                              </div>
                             </div>
                           ) : (
                             <span className="text-xs text-slate-400 italic">Não atribuído</span>

@@ -3,10 +3,11 @@
 Abaixo está a descrição detalhada da árvore de diretórios e arquivos do sistema.
 
 ### 📁 Raiz do Projeto
-*   `📄 server.ts` — 🧠 O coração do sistema. Servidor Express que gerencia Socket.io, conexão WhatsApp (Baileys) e rotas de API.
+*   `📄 server.ts` — 🧠 Servidor Express Multi-tenant. Gerencia múltiplas instâncias do WhatsApp e API REST.
 *   `📄 firebase.ts` — 🔥 Configuração e inicialização do Firebase (Auth e Firestore) com suporte a setup dinâmico.
-*   `📄 firestore.rules` — 🛡️ Regras de segurança do banco de dados para proteção de dados e PII.
-*   `📄 firebase-blueprint.json` — 📐 Blueprint da estrutura de dados do Firestore (Entidades e Caminhos).
+*   `📄 firestore.rules` — 🛡️ Regras de segurança com isolamento por `orgId` e proteção de PII.
+*   `📄 firebase-blueprint.json` — 📐 Estrutura de dados SaaS (Organizations -> Users/Leads/Settings).
+*   `📁 data/` — 💾 Armazenamento local de sessões do WhatsApp e mapeamentos de LID por organização.
 *   `📄 firebase-applet-config.json` — 🔑 Armazena as credenciais do Firebase do cliente (gerado no setup).
 *   `📄 AGENT.md` — 🤖 Template inicial da personalidade e comportamento do agente.
 *   `📄 SHOP.md` — 🛍️ Template inicial do catálogo de produtos e regras de negócio.
@@ -19,9 +20,11 @@ Abaixo está a descrição detalhada da árvore de diretórios e arquivos do sis
 *   `📄 main.tsx` — 🚀 Ponto de entrada do React.
 
 #### 📁 src/components/ (Interface do Usuário)
-*   `📄 Sidebar.tsx` — 🧭 Menu lateral de navegação.
+*   `📄 Sidebar.tsx` — 🧭 Menu lateral (Super Admin & Licenciamento).
 *   `📄 Header.tsx` — 👤 Barra superior com informações do usuário e status da conexão.
 *   `📄 Dashboard.tsx` — 📊 Painel principal com KPIs e lista de leads recentes.
+*   `📄 SuperAdminDashboard.tsx` — 👑 Painel global (MRR & Gestão de Orgs).
+*   `📄 LicenseManager.tsx` — 💳 Gestão de planos SaaS.
 *   `📄 Kanban.tsx` — 📋 Visualização do funil de vendas em colunas.
 *   `📄 Chat.tsx` — 💬 Interface de conversa em tempo real com histórico do Firestore.
 *   `📄 AgentManager.tsx` — 🛠️ Editor avançado para AGENT.md e SHOP.md.

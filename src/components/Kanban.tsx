@@ -22,24 +22,25 @@ interface KanbanProps {
   userPhone?: string;
   userRole?: 'admin' | 'agent' | null;
   userId?: string;
+  orgId?: string | null;
 }
 
-export default function Kanban({ userPhone, userRole, userId }: KanbanProps) {
+export default function Kanban({ userPhone, userRole, userId, orgId }: KanbanProps) {
   const [leads, setLeads] = useState<any[]>([]);
 
   useEffect(() => {
-    if (!userRole || !userId) return;
+    if (!userRole || !userId || !orgId) return;
 
     const fetchLeads = async () => {
       let q = query(
-        collection(db, 'leads'),
+        collection(db, 'organizations', orgId, 'leads'),
         orderBy('updatedAt', 'desc'),
         limit(100)
       );
       
-      if (userRole === 'agent' && userId) {
+      if (userRole === 'agent') {
         q = query(
-          collection(db, 'leads'),
+          collection(db, 'organizations', orgId, 'leads'),
           where('assignedTo', '==', userId),
           orderBy('updatedAt', 'desc'),
           limit(100)
@@ -55,111 +56,65 @@ export default function Kanban({ userPhone, userRole, userId }: KanbanProps) {
     };
 
     fetchLeads();
-    const interval = setInterval(fetchLeads, 45000); // 45s refresh
+    const interval = setInterval(fetchLeads, 45000);
     return () => clearInterval(interval);
-  }, [userRole, userId]);
+  }, [userRole, userId, orgId]);
 
   const leadsByStatus = useMemo(() => {
     const map: Record<string, any[]> = {};
     COLUMNS.forEach(col => map[col.id] = []);
     leads.forEach(lead => {
-      if (map[lead.status]) {
-        map[lead.status].push(lead);
-      }
+      if (map[lead.status]) map[lead.status].push(lead);
     });
     return map;
   }, [leads]);
 
   const onDragEnd = async (result: any) => {
     const { destination, source, draggableId } = result;
-
-    if (!destination) return;
+    if (!destination || !orgId) return;
     if (destination.droppableId === source.droppableId && destination.index === source.index) return;
 
     const newStatus = destination.droppableId;
 
     try {
       const leadData = leads.find(l => l.id === draggableId);
-      const leadRef = doc(db, 'leads', draggableId);
+      const leadRef = doc(db, 'organizations', orgId, 'leads', draggableId);
 
       const updateData: any = {
         status: newStatus,
         updatedAt: serverTimestamp()
       };
 
-      // Se estiver movendo para atendido, envia mensagem de retomada
       if (newStatus === 'atendido') {
-        const resumeMessage = "Olá! Estou retomando seu atendimento agora. Como posso te ajudar?";
-        
-        await addDoc(collection(db, 'leads', draggableId, 'messages'), {
-          text: resumeMessage,
-          sender: 'ai',
-          timestamp: serverTimestamp()
+        const resumeMessage = "Olá! Estou retomando seu atendimento agora.";
+        await addDoc(collection(db, 'organizations', orgId, 'leads', draggableId, 'messages'), {
+          text: resumeMessage, sender: 'ai', timestamp: serverTimestamp(), orgId
         });
-
-        const targetTo = leadData?.chatId || draggableId;
-        try {
-          await fetch('/api/whatsapp/send', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ to: targetTo, message: resumeMessage })
-          });
-        } catch (err) {
-          console.error('Error sending resume message from Kanban:', err);
-        }
-        
+        await fetch('/api/whatsapp/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ orgId, to: draggableId, message: resumeMessage })
+        });
         updateData.lastMessage = resumeMessage;
       }
 
-      // Se estiver encaminhando para humano, envia mensagem automática
       if (newStatus === 'humano') {
-        const humanMessage = "Aguarde um momento. Estou encaminhando seu atendimento para um especialista humano que continuará a conversa com você em breve. 👨‍💻";
-        
-        await addDoc(collection(db, 'leads', draggableId, 'messages'), {
-          text: humanMessage,
-          sender: 'ai',
-          timestamp: serverTimestamp()
+        const humanMessage = "Aguarde um momento. Estou encaminhando seu atendimento para um especialista humano.";
+        await addDoc(collection(db, 'organizations', orgId, 'leads', draggableId, 'messages'), {
+          text: humanMessage, sender: 'ai', timestamp: serverTimestamp(), orgId
         });
-
-        const targetTo = leadData?.chatId || draggableId;
-        try {
-          await fetch('/api/whatsapp/send', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ to: targetTo, message: humanMessage })
-          });
-
-          // Notifica o administrador no próprio WhatsApp
-          if (userPhone) {
-            const adminNotifyMessage = `🚨 ATENÇÃO: O lead ${leadData?.name || formatPhoneNumber(leadData?.phone || draggableId)} solicitou atendimento humano. Verifique o painel!`;
-            await fetch('/api/whatsapp/send', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ to: `${userPhone}@s.whatsapp.net`, message: adminNotifyMessage })
-            });
-          }
-        } catch (err) {
-          console.error('Error sending human notification from Kanban:', err);
-        }
-        
+        await fetch('/api/whatsapp/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ orgId, to: draggableId, message: humanMessage })
+        });
         updateData.lastMessage = humanMessage;
-
-        // DISTRIBUIÇÃO AUTOMÁTICA DE ATENDENTES
-        const assignedAgent = await assignLeadToAgent(draggableId, {
-          ...leadData,
-          ...updateData
-        });
-
-        if (assignedAgent) {
-          toast.info(`Lead encaminhado para ${assignedAgent.displayName || assignedAgent.name}`);
-        }
       }
 
       await updateDoc(leadRef, updateData);
       toast.success(`Lead movido para ${COLUMNS.find(c => c.id === newStatus)?.title}`);
     } catch (error) {
       console.error('Error updating lead status:', error);
-      toast.error('Erro ao mover lead');
     }
   };
 
