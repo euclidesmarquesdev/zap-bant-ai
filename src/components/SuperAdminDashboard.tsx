@@ -16,7 +16,8 @@ import {
   Calendar,
   ExternalLink,
   Loader2,
-  Filter
+  Filter,
+  Clock
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { format } from 'date-fns';
@@ -38,17 +39,19 @@ export default function SuperAdminDashboard() {
     return () => unsubscribe();
   }, []);
 
-  const toggleOrgStatus = async (orgId: string, currentStatus: boolean) => {
+  const toggleOrgStatus = async (orgId: string, currentStatus: string) => {
     if (orgId === 'master-org' || orgId === 'suprema') {
       toast.error('Esta organização é protegida e não pode ser desativada.');
       return;
     }
     try {
+      const newStatus = currentStatus === 'active' ? 'inactive' : 'active';
       await updateDoc(doc(db, 'organizations', orgId), {
-        active: !currentStatus,
+        status: newStatus,
+        active: newStatus === 'active',
         updatedAt: Timestamp.now()
       });
-      toast.success(`Organização ${!currentStatus ? 'ativada' : 'desativada'} com sucesso!`);
+      toast.success(`Organização ${newStatus === 'active' ? 'ativada' : 'desativada'} com sucesso!`);
     } catch (error) {
       console.error('Erro ao alternar status:', error);
       toast.error('Erro ao alterar status da organização.');
@@ -58,18 +61,19 @@ export default function SuperAdminDashboard() {
   const filteredOrgs = orgs.filter(org => {
     const matchesSearch = (org.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
                           (org.id || '').toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesFilter = filter === 'all' || (filter === 'active' ? org.active : !org.active);
+    const matchesFilter = filter === 'all' || 
+                         (filter === 'active' ? org.status === 'active' : org.status === 'inactive');
     return matchesSearch && matchesFilter;
   });
 
   const stats = {
     totalOrgs: orgs.length,
-    activeOrgs: orgs.filter(o => o.active).length,
+    activeOrgs: orgs.filter(o => o.status === 'active').length,
+    pendingOrgs: orgs.filter(o => o.status === 'pending').length,
     totalRevenue: orgs.reduce((acc, o) => {
       const plans: any = { free: 0, basic: 97, pro: 197, enterprise: 497 };
       return acc + (o.subscriptionStatus === 'active' ? (plans[o.plan] || 0) : 0);
     }, 0),
-    pendingIssues: orgs.filter(o => o.subscriptionStatus === 'past_due' || o.subscriptionStatus === 'canceled').length
   };
 
   if (loading) {
@@ -120,7 +124,7 @@ export default function SuperAdminDashboard() {
         <StatCard title="Total de Orgs" value={stats.totalOrgs} icon={Building2} color="blue" />
         <StatCard title="Orgs Ativas" value={stats.activeOrgs} icon={CheckCircle2} color="green" />
         <StatCard title="Receita Mensal (MRR)" value={`R$ ${stats.totalRevenue.toLocaleString()}`} icon={DollarSign} color="purple" />
-        <StatCard title="Inadimplências" value={stats.pendingIssues} icon={ShieldAlert} color="orange" highlight={stats.pendingIssues > 0} />
+        <StatCard title="Aguardando Aprovação" value={stats.pendingOrgs} icon={ShieldAlert} color="orange" highlight={stats.pendingOrgs > 0} />
       </div>
 
       {/* Orgs Table */}
@@ -159,15 +163,25 @@ export default function SuperAdminDashboard() {
                     </div>
                   </td>
                   <td className="px-6 py-4">
-                    <button 
-                      onClick={() => toggleOrgStatus(org.id, org.active)}
-                      className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider transition-all ${
-                        org.active ? 'bg-green-50 text-green-600 border border-green-100' : 'bg-red-50 text-red-600 border border-red-100'
-                      }`}
-                    >
-                      {org.active ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
-                      {org.active ? 'Ativa' : 'Desativada'}
-                    </button>
+                    <div className="flex items-center gap-3">
+                      <button 
+                        onClick={() => toggleOrgStatus(org.id, org.status)}
+                        className={`relative w-10 h-5 rounded-full transition-all ${
+                          org.status === 'active' ? 'bg-green-500' : 'bg-slate-300'
+                        }`}
+                      >
+                        <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${
+                          org.status === 'active' ? 'left-6' : 'left-1'
+                        }`} />
+                      </button>
+                      <span className={`text-[10px] font-bold uppercase tracking-wider ${
+                        org.status === 'active' ? 'text-green-600' : 
+                        org.status === 'pending' ? 'text-amber-600' :
+                        'text-red-600'
+                      }`}>
+                        {org.status === 'active' ? 'Ativa' : org.status === 'pending' ? 'Pendente' : 'Desativada'}
+                      </span>
+                    </div>
                   </td>
                   <td className="px-6 py-4">
                     <span className={`px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest ${

@@ -47,6 +47,7 @@ export default function Settings({ user, userRole, orgId }: SettingsProps) {
     displayName: user.displayName || '',
     email: user.email || '',
     phone: '',
+    orgName: '',
   });
 
   useEffect(() => {
@@ -54,17 +55,29 @@ export default function Settings({ user, userRole, orgId }: SettingsProps) {
     async function loadSettings() {
       if (!orgId) return;
       try {
-        const userDoc = await getDoc(doc(db, 'organizations', orgId, 'users', user.uid));
-        if (isMounted && userDoc.exists()) {
-          const data = userDoc.data();
-          setSettings(prev => ({
-            ...prev,
-            geminiApiKey: data.geminiApiKey || '',
-            notificationsEnabled: data.notificationsEnabled ?? true,
-            autoResponse: data.autoResponse ?? true,
-            displayName: data.displayName || user.displayName || '',
-            phone: data.phone || '',
-          }));
+        const [userDoc, orgDoc] = await Promise.all([
+          getDoc(doc(db, 'organizations', orgId, 'users', user.uid)),
+          getDoc(doc(db, 'organizations', orgId))
+        ]);
+
+        if (isMounted) {
+          if (userDoc.exists()) {
+            const data = userDoc.data();
+            setSettings(prev => ({
+              ...prev,
+              geminiApiKey: data.geminiApiKey || '',
+              notificationsEnabled: data.notificationsEnabled ?? true,
+              autoResponse: data.autoResponse ?? true,
+              displayName: data.displayName || user.displayName || '',
+              phone: data.phone || '',
+            }));
+          }
+          if (orgDoc.exists()) {
+            setSettings(prev => ({
+              ...prev,
+              orgName: orgDoc.data().name || ''
+            }));
+          }
         }
 
         if (userRole === 'admin') {
@@ -86,11 +99,21 @@ export default function Settings({ user, userRole, orgId }: SettingsProps) {
     if (!orgId) return;
     setSaving(true);
     try {
-      await setDoc(doc(db, 'organizations', orgId, 'users', user.uid), {
-        ...settings,
-        orgId,
-        updatedAt: new Date(),
-      }, { merge: true });
+      await Promise.all([
+        setDoc(doc(db, 'organizations', orgId, 'users', user.uid), {
+          geminiApiKey: settings.geminiApiKey,
+          notificationsEnabled: settings.notificationsEnabled,
+          autoResponse: settings.autoResponse,
+          displayName: settings.displayName,
+          phone: settings.phone,
+          orgId,
+          updatedAt: new Date(),
+        }, { merge: true }),
+        userRole === 'admin' ? updateDoc(doc(db, 'organizations', orgId), {
+          name: settings.orgName,
+          updatedAt: new Date()
+        }) : Promise.resolve()
+      ]);
       toast.success('Configurações salvas!');
     } catch (error) {
       console.error('Erro ao salvar:', error);
@@ -231,25 +254,38 @@ export default function Settings({ user, userRole, orgId }: SettingsProps) {
                 <h3 className="text-lg font-bold text-slate-900">Portal do Atendente (SaaS)</h3>
               </div>
 
-              <div className="p-4 bg-purple-50 rounded-2xl border border-purple-100 space-y-3">
-                <p className="text-xs text-purple-700 leading-relaxed">
-                  Este é o link exclusivo para sua equipe de atendimento. Compartilhe este link com seus atendentes para que eles possam acessar o painel desta organização.
-                </p>
-                <div className="flex items-center gap-2">
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-bold text-slate-700 ml-1">Nome da Organização</label>
                   <input 
-                    readOnly
-                    value={`${window.location.origin}/login?org=${orgId}`}
-                    className="flex-1 px-3 py-2 bg-white border border-purple-200 rounded-lg text-[10px] font-mono text-purple-900"
+                    type="text" 
+                    value={settings.orgName}
+                    onChange={e => setSettings({...settings, orgName: e.target.value})}
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
+                    placeholder="Nome da sua empresa"
                   />
-                  <button 
-                    onClick={() => {
-                      navigator.clipboard.writeText(`${window.location.origin}/login?org=${orgId}`);
-                      toast.success('Link copiado!');
-                    }}
-                    className="px-3 py-2 bg-purple-600 text-white text-[10px] font-bold rounded-lg hover:bg-purple-700 transition-all"
-                  >
-                    Copiar Link
-                  </button>
+                </div>
+
+                <div className="p-4 bg-purple-50 rounded-2xl border border-purple-100 space-y-3">
+                  <p className="text-xs text-purple-700 leading-relaxed">
+                    Este é o link exclusivo para sua equipe de atendimento. Compartilhe este link com seus atendentes.
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <input 
+                      readOnly
+                      value={`${window.location.origin}/login?org=${orgId}`}
+                      className="flex-1 px-3 py-2 bg-white border border-purple-200 rounded-lg text-[10px] font-mono text-purple-900"
+                    />
+                    <button 
+                      onClick={() => {
+                        navigator.clipboard.writeText(`${window.location.origin}/login?org=${orgId}`);
+                        toast.success('Link copiado!');
+                      }}
+                      className="px-3 py-2 bg-purple-600 text-white text-[10px] font-bold rounded-lg hover:bg-purple-700 transition-all"
+                    >
+                      Copiar Link
+                    </button>
+                  </div>
                 </div>
               </div>
             </section>

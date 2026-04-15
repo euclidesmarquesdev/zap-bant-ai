@@ -210,6 +210,16 @@ async function startServer() {
     }
   });
 
+  app.post("/api/super-admin/login", (req, res) => {
+    const { username, password } = req.body;
+    // Hardcoded Super Admin credentials as requested
+    if (username === "superadmin" && password === "admin123") {
+      res.json({ success: true, token: "super-admin-token" });
+    } else {
+      res.status(401).json({ error: "Credenciais inválidas" });
+    }
+  });
+
   app.get("/api/config", (req, res) => {
     try {
       const config = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'firebase-applet-config.json'), 'utf-8'));

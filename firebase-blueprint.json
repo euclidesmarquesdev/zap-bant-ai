@@ -10,6 +10,7 @@
         "ownerUid": { "type": "string" },
         "createdAt": { "type": "string", "format": "date-time" },
         "active": { "type": "boolean" },
+        "status": { "type": "string", "enum": ["pending", "active", "inactive"] },
         "whatsappNumber": { "type": "string" },
         "whatsappStatus": { "type": "string" },
         "plan": { "type": "string", "enum": ["free", "basic", "pro", "enterprise"] },

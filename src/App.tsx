@@ -17,6 +17,8 @@ import SetupScreen from './components/SetupScreen';
 import TeamManager from './components/TeamManager';
 import SuperAdminDashboard from './components/SuperAdminDashboard';
 import LicenseManager from './components/LicenseManager';
+import OrgRegistration from './components/OrgRegistration';
+import WaitingApproval from './components/WaitingApproval';
 import AuthScreen from './components/Auth/AuthScreen';
 import { assignLeadToAgent } from './services/assignmentService';
 import { LogIn, MessageSquare, LayoutDashboard, Users, Bot, BarChart3, Settings as SettingsIcon } from 'lucide-react';
@@ -28,6 +30,7 @@ export default function App() {
   const [orgId, setOrgId] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<'admin' | 'agent' | null>(null);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [orgStatus, setOrgStatus] = useState<'pending' | 'active' | 'inactive' | null>(null);
   const [userData, setUserData] = useState<any>(null);
   const [welcomeSettings, setWelcomeSettings] = useState<any>(null);
   const [isRoleLoading, setIsRoleLoading] = useState(true);
@@ -49,6 +52,9 @@ export default function App() {
       if (user) {
         setUser(user);
         
+        const urlParams = new URLSearchParams(window.location.search);
+        const invitedOrgId = urlParams.get('org');
+
         const currentEmail = user.email?.toLowerCase().trim() || '';
         const primaryAdminEmail = adminEmail.toLowerCase().trim();
         const isPrimaryAdmin = currentEmail === primaryAdminEmail;
@@ -66,6 +72,32 @@ export default function App() {
 
         if (userGlobalSnap.exists()) {
           currentOrgId = userGlobalSnap.data().orgId;
+        }
+
+        // Handle Invitation Link
+        if (invitedOrgId && invitedOrgId !== currentOrgId) {
+          currentOrgId = invitedOrgId;
+          await setDoc(userGlobalRef, {
+            uid: user.uid,
+            email: currentEmail,
+            orgId: invitedOrgId,
+            role: 'agent',
+            updatedAt: serverTimestamp()
+          }, { merge: true });
+
+          // Add to Org's users
+          await setDoc(doc(db, 'organizations', invitedOrgId, 'users', user.uid), {
+            uid: user.uid,
+            orgId: invitedOrgId,
+            email: currentEmail,
+            displayName: user.displayName || 'Atendente',
+            role: 'agent',
+            active: true,
+            createdAt: serverTimestamp()
+          }, { merge: true });
+          
+          // Clear URL param
+          window.history.replaceState({}, document.title, window.location.pathname);
         }
 
         // If primary admin, ensure they have the master-org and admin role
@@ -90,7 +122,8 @@ export default function App() {
               name: 'Master Administration',
               ownerUid: user.uid,
               createdAt: serverTimestamp(),
-              active: true
+              active: true,
+              status: 'active'
             });
           }
 
@@ -110,6 +143,14 @@ export default function App() {
         if (currentOrgId) {
           setOrgId(currentOrgId);
           joinOrg(currentOrgId); // Join socket room
+
+          // Fetch Org Status
+          const orgRef = doc(db, 'organizations', currentOrgId);
+          onSnapshot(orgRef, (snap) => {
+            if (snap.exists()) {
+              setOrgStatus(snap.data().status || (snap.data().active ? 'active' : 'inactive'));
+            }
+          });
 
           // 2. Fetch User Data from Org
           const userRef = doc(db, 'organizations', currentOrgId, 'users', user.uid);
@@ -282,6 +323,14 @@ export default function App() {
 
   if (!user) {
     return <AuthScreen />;
+  }
+
+  if (!orgId && !isSuperAdmin) {
+    return <OrgRegistration user={user} onComplete={(id) => setOrgId(id)} />;
+  }
+
+  if (orgId && orgStatus !== 'active' && !isSuperAdmin) {
+    return <WaitingApproval />;
   }
 
   if (isRoleLoading) {
