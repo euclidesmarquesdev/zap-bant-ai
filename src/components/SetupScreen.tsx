@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Shield, Key, Database, Globe, Save, Loader2, CheckCircle2, User } from 'lucide-react';
+import { Shield, Key, Database, Globe, Save, Loader2, CheckCircle2, User, Sparkles } from 'lucide-react';
 import { motion } from 'motion/react';
 import { toast } from 'sonner';
 
@@ -65,13 +65,25 @@ export default function SetupScreen({ onComplete }: { onComplete: () => void }) 
             </div>
           </div>
           
-          <div className="bg-blue-700/50 rounded-2xl p-4 border border-white/10 text-xs space-y-2">
-            <p className="font-bold flex items-center gap-2"><CheckCircle2 className="w-3 h-3" /> Pré-requisitos no Firebase Console:</p>
-            <ul className="list-disc list-inside opacity-80 space-y-1 ml-2">
-              <li>Ativar <b>Authentication</b> (E-mail/Senha e Google)</li>
-              <li>Criar banco de dados <b>Firestore</b></li>
-              <li>Configurar as regras de segurança (disponíveis na pasta raiz do projeto)</li>
-            </ul>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="bg-blue-700/50 rounded-2xl p-4 border border-white/10 text-xs space-y-2">
+              <p className="font-bold flex items-center gap-2 text-blue-200"><CheckCircle2 className="w-3 h-3" /> Configuração Manual:</p>
+              <ul className="list-disc list-inside opacity-80 space-y-1 ml-2">
+                <li>Ativar <b>Authentication</b></li>
+                <li>Criar banco de dados <b>Firestore</b></li>
+                <li>Preencher os campos abaixo</li>
+              </ul>
+            </div>
+
+            <div className="bg-white/10 rounded-2xl p-4 border border-white/20 text-xs space-y-2 backdrop-blur-sm">
+              <p className="font-bold flex items-center gap-2 text-amber-300"><Sparkles className="w-3 h-3" /> Configuração Automática:</p>
+              <p className="opacity-90 leading-relaxed">
+                Você pode solicitar que o <b>AI Studio Build</b> configure tudo para você automaticamente.
+              </p>
+              <div className="bg-white/20 p-2 rounded-lg font-mono text-[10px] mt-2">
+                "Configure o Firebase para mim"
+              </div>
+            </div>
           </div>
         </div>
 

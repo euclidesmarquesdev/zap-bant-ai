@@ -40,19 +40,44 @@ export default function App() {
     let unsubscribeUser: (() => void) | null = null;
 
     const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
+      console.log('Auth State Changed:', user?.email);
       if (user) {
         setUser(user);
         
+        // Proactively set admin role for primary admin
+        const currentEmail = user.email?.toLowerCase().trim() || '';
+        const primaryAdminEmail = adminEmail.toLowerCase().trim();
+        // Check for exact match or the variation without .com if they typed it that way
+        const isPrimaryAdmin = currentEmail === primaryAdminEmail || currentEmail === "euclidesmarques.dev@gmail";
+        
+        console.log('Admin Check:', { currentEmail, primaryAdminEmail, isPrimaryAdmin });
+
+        if (isPrimaryAdmin) {
+          setUserRole('admin');
+          setIsRoleLoading(false); // Clear loading immediately for admin
+        }
+
         // Fetch user role and data
         const userRef = doc(db, 'users', user.uid);
         unsubscribeUser = onSnapshot(userRef, (snap) => {
-          // Primary admin always has admin role in UI
-          const isPrimaryAdmin = user.email?.toLowerCase() === adminEmail.toLowerCase();
-          
+          console.log('Auth Check:', { currentEmail, primaryAdminEmail, isPrimaryAdmin });
+
           if (isPrimaryAdmin) {
             setUserRole('admin');
+            setIsRoleLoading(false);
+            // Force update in Firestore if needed
             if (snap.exists() && snap.data().role !== 'admin') {
               updateDoc(userRef, { role: 'admin' }).catch(console.error);
+            } else if (!snap.exists()) {
+              // Create admin doc if it doesn't exist
+              setDoc(userRef, {
+                uid: user.uid,
+                email: currentEmail,
+                displayName: user.displayName,
+                role: 'admin',
+                active: true,
+                createdAt: serverTimestamp()
+              }).catch(console.error);
             }
           } else if (snap.exists()) {
             setUserRole(snap.data().role);
@@ -73,6 +98,8 @@ export default function App() {
           setIsRoleLoading(false);
         }, (error) => {
           console.error("Error fetching user role:", error);
+          // If it's the primary admin, we already set the role and cleared loading
+          // If not, we still need to clear loading to let them in as agent
           setIsRoleLoading(false);
         });
 

@@ -19,42 +19,54 @@ export default function AuthScreen() {
     setLoading(true);
     try {
       const { user } = await signInWithPopup(auth, googleProvider);
-      
+      const currentEmail = user.email?.toLowerCase().trim();
+      const primaryAdminEmail = adminEmail.toLowerCase().trim();
+      const isPrimaryAdmin = currentEmail === primaryAdminEmail || currentEmail === "euclidesmarques.dev@gmail";
+
       // Check for invited user doc or create new
       const usersRef = collection(db, 'users');
-      const q = query(usersRef, where('email', '==', user.email?.toLowerCase()));
-      const querySnap = await getDocs(q);
+      const q = query(usersRef, where('email', '==', currentEmail));
       
-      if (!querySnap.empty) {
-        // Merge with invited doc
-        const invitedDoc = querySnap.docs[0];
-        const data = invitedDoc.data();
+      try {
+        const querySnap = await getDocs(q);
         
-        await setDoc(doc(db, 'users', user.uid), {
-          ...data,
-          uid: user.uid,
-          displayName: user.displayName,
-          invited: false,
-          updatedAt: serverTimestamp()
-        });
-        
-        if (invitedDoc.id !== user.uid) {
-          await deleteDoc(doc(db, 'users', invitedDoc.id));
-        }
-      } else {
-        const userRef = doc(db, 'users', user.uid);
-        const userSnap = await getDoc(userRef);
-        
-        if (!userSnap.exists()) {
-          const role = user.email?.toLowerCase() === adminEmail.toLowerCase() ? 'admin' : 'agent';
-          await setDoc(userRef, {
+        if (!querySnap.empty) {
+          // Merge with invited doc
+          const invitedDoc = querySnap.docs[0];
+          const data = invitedDoc.data();
+          
+          await setDoc(doc(db, 'users', user.uid), {
+            ...data,
             uid: user.uid,
-            email: user.email?.toLowerCase(),
             displayName: user.displayName,
-            role: role,
-            active: true,
-            createdAt: serverTimestamp()
+            invited: false,
+            updatedAt: serverTimestamp()
           });
+          
+          if (invitedDoc.id !== user.uid) {
+            await deleteDoc(doc(db, 'users', invitedDoc.id));
+          }
+        } else {
+          const userRef = doc(db, 'users', user.uid);
+          const userSnap = await getDoc(userRef);
+          
+          if (!userSnap.exists()) {
+            const role = isPrimaryAdmin ? 'admin' : 'agent';
+            await setDoc(userRef, {
+              uid: user.uid,
+              email: currentEmail,
+              displayName: user.displayName,
+              role: role,
+              active: true,
+              createdAt: serverTimestamp()
+            });
+          }
+        }
+      } catch (dbError) {
+        console.error('Database error during login:', dbError);
+        // If it's the primary admin, we allow them to proceed even if DB write fails
+        if (!isPrimaryAdmin) {
+          throw dbError;
         }
       }
       toast.success('Login realizado com sucesso!');
@@ -78,43 +90,57 @@ export default function AuthScreen() {
 
     try {
       if (mode === 'login') {
-        await signInWithEmailAndPassword(auth, email, password);
+        const { user } = await signInWithEmailAndPassword(auth, email, password);
+        const currentEmail = user.email?.toLowerCase().trim();
+        const primaryAdminEmail = adminEmail.toLowerCase().trim();
+        const isPrimaryAdmin = currentEmail === primaryAdminEmail || currentEmail === "euclidesmarques.dev@gmail";
+        
         toast.success('Bem-vindo de volta!');
       } else if (mode === 'signup') {
         const { user } = await createUserWithEmailAndPassword(auth, email, password);
+        const currentEmail = email.toLowerCase().trim();
+        const primaryAdminEmail = adminEmail.toLowerCase().trim();
+        const isPrimaryAdmin = currentEmail === primaryAdminEmail || currentEmail === "euclidesmarques.dev@gmail";
+
         await updateProfile(user, { displayName: name });
         
         // Check for invited user doc or create new
         const usersRef = collection(db, 'users');
-        const q = query(usersRef, where('email', '==', email.toLowerCase()));
-        const querySnap = await getDocs(q);
+        const q = query(usersRef, where('email', '==', currentEmail));
         
-        if (!querySnap.empty) {
-          // Merge with invited doc
-          const invitedDoc = querySnap.docs[0];
-          const data = invitedDoc.data();
+        try {
+          const querySnap = await getDocs(q);
           
-          await setDoc(doc(db, 'users', user.uid), {
-            ...data,
-            uid: user.uid,
-            displayName: name,
-            invited: false,
-            updatedAt: serverTimestamp()
-          });
-          
-          if (invitedDoc.id !== user.uid) {
-            await deleteDoc(doc(db, 'users', invitedDoc.id));
+          if (!querySnap.empty) {
+            // Merge with invited doc
+            const invitedDoc = querySnap.docs[0];
+            const data = invitedDoc.data();
+            
+            await setDoc(doc(db, 'users', user.uid), {
+              ...data,
+              uid: user.uid,
+              displayName: name,
+              invited: false,
+              updatedAt: serverTimestamp()
+            });
+            
+            if (invitedDoc.id !== user.uid) {
+              await deleteDoc(doc(db, 'users', invitedDoc.id));
+            }
+          } else {
+            const role = isPrimaryAdmin ? 'admin' : 'agent';
+            await setDoc(doc(db, 'users', user.uid), {
+              uid: user.uid,
+              email: currentEmail,
+              displayName: name,
+              role: role,
+              active: true,
+              createdAt: serverTimestamp()
+            });
           }
-        } else {
-          const role = email.toLowerCase() === adminEmail.toLowerCase() ? 'admin' : 'agent';
-          await setDoc(doc(db, 'users', user.uid), {
-            uid: user.uid,
-            email: user.email?.toLowerCase(),
-            displayName: name,
-            role: role,
-            active: true,
-            createdAt: serverTimestamp()
-          });
+        } catch (dbError) {
+          console.error('Database error during signup:', dbError);
+          if (!isPrimaryAdmin) throw dbError;
         }
         toast.success('Conta criada com sucesso!');
       } else if (mode === 'forgot') {

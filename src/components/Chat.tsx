@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { collection, onSnapshot, query, orderBy, addDoc, serverTimestamp, doc, getDoc, where, limit } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, addDoc, serverTimestamp, doc, getDoc, where, limit, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Send, User, Bot, Phone, MoreVertical, Search, ShieldCheck, MessageSquare } from 'lucide-react';
 import { format } from 'date-fns';
@@ -22,21 +22,29 @@ export default function Chat({ selectedLeadId, userRole, userId }: ChatProps) {
   useEffect(() => {
     if (!userRole || !userId) return;
 
-    let q = query(collection(db, 'leads'), orderBy('updatedAt', 'desc'), limit(50));
-    
-    if (userRole === 'agent' && userId) {
-      q = query(
-        collection(db, 'leads'), 
-        where('assignedTo', '==', userId),
-        orderBy('updatedAt', 'desc'),
-        limit(50)
-      );
-    }
+    const fetchLeads = async () => {
+      let q = query(collection(db, 'leads'), orderBy('updatedAt', 'desc'), limit(50));
+      
+      if (userRole === 'agent' && userId) {
+        q = query(
+          collection(db, 'leads'), 
+          where('assignedTo', '==', userId),
+          orderBy('updatedAt', 'desc'),
+          limit(50)
+        );
+      }
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      setLeads(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
-    return () => unsubscribe();
+      try {
+        const snapshot = await getDocs(q);
+        setLeads(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      } catch (error) {
+        console.error('Error fetching leads for Chat:', error);
+      }
+    };
+
+    fetchLeads();
+    const interval = setInterval(fetchLeads, 30000); // 30s refresh
+    return () => clearInterval(interval);
   }, [userRole, userId]);
 
   useEffect(() => {

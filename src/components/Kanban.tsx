@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { collection, onSnapshot, query, orderBy, doc, updateDoc, serverTimestamp, addDoc, where, limit } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, doc, updateDoc, serverTimestamp, addDoc, where, limit, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 import { StatusBadge } from './Dashboard';
 import { motion } from 'motion/react';
@@ -30,25 +30,33 @@ export default function Kanban({ userPhone, userRole, userId }: KanbanProps) {
   useEffect(() => {
     if (!userRole || !userId) return;
 
-    let q = query(
-      collection(db, 'leads'),
-      orderBy('updatedAt', 'desc'),
-      limit(100)
-    );
-    
-    if (userRole === 'agent' && userId) {
-      q = query(
+    const fetchLeads = async () => {
+      let q = query(
         collection(db, 'leads'),
-        where('assignedTo', '==', userId),
         orderBy('updatedAt', 'desc'),
         limit(100)
       );
-    }
+      
+      if (userRole === 'agent' && userId) {
+        q = query(
+          collection(db, 'leads'),
+          where('assignedTo', '==', userId),
+          orderBy('updatedAt', 'desc'),
+          limit(100)
+        );
+      }
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      setLeads(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
-    return () => unsubscribe();
+      try {
+        const snapshot = await getDocs(q);
+        setLeads(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      } catch (error) {
+        console.error('Error fetching leads for Kanban:', error);
+      }
+    };
+
+    fetchLeads();
+    const interval = setInterval(fetchLeads, 45000); // 45s refresh
+    return () => clearInterval(interval);
   }, [userRole, userId]);
 
   const leadsByStatus = useMemo(() => {
