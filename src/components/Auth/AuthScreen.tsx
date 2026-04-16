@@ -35,8 +35,12 @@ export default function AuthScreen() {
       // Garantir persistência local antes do login
       await setPersistence(auth, browserLocalPersistence);
       
-      if (useRedirect || window.self !== window.top) {
-        console.log('📡 [AUTH_SCREEN] Usando Redirect (mais seguro para iframes)');
+      const isInIframe = window.self !== window.top;
+      
+      // No preview do AI Studio ou iframes, Popup costuma funcionar melhor se aberto em nova aba
+      // mas o Redirect é mais garantido para persistência se o domínio estiver certo.
+      if (useRedirect || isInIframe) {
+        console.log('📡 [AUTH_SCREEN] Usando Redirect');
         await signInWithRedirect(auth, googleProvider);
         return;
       }
@@ -48,11 +52,12 @@ export default function AuthScreen() {
     } catch (error: any) {
       console.error('❌ [AUTH_SCREEN] Erro fatal no login:', error.code, error.message);
       
-      if (error.code === 'auth/popup-blocked' || error.code === 'auth/cancelled-popup-request') {
-        toast.info('Popup bloqueado. Tentando redirecionamento...');
-        await signInWithRedirect(auth, googleProvider);
+      if (error.code === 'auth/popup-blocked') {
+        toast.error('Popup bloqueado! Tente o botão de nova aba abaixo.');
+      } else if (error.code === 'auth/unauthorized-domain') {
+        toast.error('Domínio não autorizado no Firebase Console: ' + window.location.hostname);
       } else {
-        toast.error('Erro ao entrar com Google: ' + error.message);
+        toast.error('Erro no login: ' + error.message);
       }
     } finally {
       if (!useRedirect) setLoading(false);
@@ -227,6 +232,26 @@ export default function AuthScreen() {
           </div>
 
           <div className="space-y-4 mb-8">
+            {window.self !== window.top && (
+              <div className="p-4 bg-amber-50 rounded-2xl border border-amber-100 flex flex-col gap-2 mb-4">
+                <div className="flex gap-3">
+                  <ShieldAlert className="w-5 h-5 text-amber-600 shrink-0" />
+                  <p className="text-[10px] text-amber-700 leading-relaxed font-bold">
+                    AMBIENTE PROTEGIDO DETECTADO (IFRAME)
+                  </p>
+                </div>
+                <p className="text-[9px] text-amber-600 leading-tight">
+                  Logins podem falhar dentro de visualizadores. Para melhor experiência, abra o sistema em uma aba cheia.
+                </p>
+                <button 
+                  onClick={() => window.open(window.location.href, '_blank')}
+                  className="mt-2 py-2 bg-amber-200 text-amber-900 rounded-xl text-[9px] font-black uppercase hover:bg-amber-300 transition-all border border-amber-300"
+                >
+                  Abrir em Nova Aba 🚀
+                </button>
+              </div>
+            )}
+
             {isMasterSession ? (
               <div className="space-y-4">
                 <button 

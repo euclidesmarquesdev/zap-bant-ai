@@ -156,16 +156,26 @@ export default function App() {
 
     console.log('📡 [APP] Registrando listener onAuthStateChanged...');
     
+    // Diagnóstico de Host
+    console.log('🌍 [APP] Host Atual:', window.location.hostname);
+    if (!window.location.hostname.includes('firebaseapp.com') && !window.location.hostname.includes('web.app') && !window.location.hostname.includes('localhost')) {
+      console.warn('⚠️ [APP] Domínio customizado detectado. Certifique-se de que "' + window.location.hostname + '" esteja nos domínios autorizados do Firebase.');
+    }
+
     // Capturar resultado de redirecionamento (caso o popup falhe)
     getRedirectResult(auth).then((result) => {
       if (result) {
         console.log('📥 [AUTH] Resultado de redirecionamento capturado:', result.user.email);
         setUser(result.user);
+        toast.success('Login recuperado por redirecionamento!');
       } else {
         console.log('📥 [AUTH] Nenhum resultado de redirecionamento pendente.');
       }
     }).catch((err) => {
       console.error('❌ [AUTH] Erro no getRedirectResult:', err.code, err.message);
+      if (err.code === 'auth/unauthorized-domain') {
+        toast.error('Domínio "' + window.location.hostname + '" não autorizado no Firebase!');
+      }
     });
 
     const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
