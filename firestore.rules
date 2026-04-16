@@ -8,7 +8,7 @@ service cloud.firestore {
     
     function isSuperAdmin() {
       return isAuthenticated() && 
-        (request.auth.token.email == "euclidesmarques.dev@gmail.com");
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'super_admin';
     }
 
     function isOrgMember(orgId) {
@@ -28,9 +28,11 @@ service cloud.firestore {
     }
 
     function isOrgAgent(orgId) {
-      return isOrgMember(orgId) && 
-        exists(/databases/$(database)/documents/organizations/$(orgId)/users/$(request.auth.uid)) &&
-        get(/databases/$(database)/documents/organizations/$(orgId)/users/$(request.auth.uid)).data.role == 'agent';
+      return isOrgMember(orgId) && (
+        isSuperAdmin() ||
+        (exists(/databases/$(database)/documents/organizations/$(orgId)/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/organizations/$(orgId)/users/$(request.auth.uid)).data.role == 'agent')
+      );
     }
 
     // Global Users (Mapping UID to Org)
@@ -41,7 +43,8 @@ service cloud.firestore {
 
     // Organizations
     match /organizations/{orgId} {
-      allow read: if isOrgMember(orgId) || isSuperAdmin();
+      allow list: if isSuperAdmin();
+      allow get: if isOrgMember(orgId) || isSuperAdmin();
       allow create: if isAuthenticated(); // Anyone can create an org
       allow update, delete: if isOrgAdmin(orgId);
 

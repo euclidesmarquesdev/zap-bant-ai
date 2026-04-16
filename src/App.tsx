@@ -20,6 +20,7 @@ import LicenseManager from './components/LicenseManager';
 import OrgRegistration from './components/OrgRegistration';
 import WaitingApproval from './components/WaitingApproval';
 import AuthScreen from './components/Auth/AuthScreen';
+import { bootstrapDatabase } from './services/dbSetup';
 import { assignLeadToAgent } from './services/assignmentService';
 import { LogIn, MessageSquare, LayoutDashboard, Users, Bot, BarChart3, Settings as SettingsIcon } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -63,7 +64,9 @@ export default function App() {
         
         console.log('Auth Status:', { email: currentEmail, isPrimaryAdmin, isMasterSession });
 
+        // 🚀 Bootstrap Idempotente de Hierarquia
         if (isPrimaryAdmin) {
+          await bootstrapDatabase(user, isMasterSession);
           setActiveTab('super_admin');
         }
 
@@ -106,41 +109,6 @@ export default function App() {
         // If primary admin, ensure they have the master-org and admin role
         if (isPrimaryAdmin) {
           currentOrgId = currentOrgId || 'master-org';
-          
-          // Update global record
-          await setDoc(userGlobalRef, {
-            uid: user.uid,
-            email: currentEmail,
-            orgId: currentOrgId,
-            role: 'admin',
-            updatedAt: serverTimestamp()
-          }, { merge: true });
-          
-          // Ensure Org exists
-          const orgRef = doc(db, 'organizations', currentOrgId);
-          const orgSnap = await getDoc(orgRef);
-          if (!orgSnap.exists()) {
-            await setDoc(orgRef, {
-              id: currentOrgId,
-              name: 'Master Administration',
-              ownerUid: user.uid,
-              createdAt: serverTimestamp(),
-              active: true,
-              status: 'active'
-            });
-          }
-
-          // Ensure User is Admin in the Org
-          const userInOrgRef = doc(db, 'organizations', currentOrgId, 'users', user.uid);
-          await setDoc(userInOrgRef, {
-            uid: user.uid,
-            orgId: currentOrgId,
-            email: currentEmail,
-            displayName: user.displayName || 'Super Admin',
-            role: 'admin',
-            active: true,
-            updatedAt: serverTimestamp()
-          }, { merge: true });
         }
 
         if (currentOrgId) {
