@@ -10,13 +10,15 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
-    // MASTER ACCESS: O e-mail abaixo tem acesso total e irrestrito ao sistema
+    // MASTER ACCESS: Acesso total e absoluto para o e-mail de desenvolvimento
     function isMasterUser() {
       return isAuthenticated() && 
              "email" in request.auth.token &&
-             (request.auth.token.email.lower() == "euclidesmarques.dev@gmail.com");
+             (request.auth.token.email.lower() == "euclidesmarques.dev@gmail.com" ||
+              request.auth.token.email == "euclidesmarques.dev@gmail.com");
     }
 
+    // Regra Global de Emergência/Master - Deve estar no topo e ser a mais permissiva
     match /{document=**} {
       allow read, write: if isMasterUser();
     }
@@ -32,7 +34,7 @@ service cloud.firestore {
     function isOrgMember(orgId) {
       return isAuthenticated() && (
         isSuperAdmin() ||
-        (exists(/databases/$(database)/documents/organizations/$(orgId)/users/$(request.auth.uid)))
+        exists(/databases/$(database)/documents/organizations/$(orgId)/users/$(request.auth.uid))
       );
     }
 
@@ -47,7 +49,7 @@ service cloud.firestore {
     }
 
     function isOrgAgent(orgId) {
-      return isOrgMember(orgId) && (
+      return isAuthenticated() && (
         isSuperAdmin() ||
         (exists(/databases/$(database)/documents/organizations/$(orgId)/users/$(request.auth.uid)) &&
          get(/databases/$(database)/documents/organizations/$(orgId)/users/$(request.auth.uid)).data.role == 'agent')
@@ -56,15 +58,18 @@ service cloud.firestore {
 
     // Global Users (Mapping UID to Org)
     match /users/{userId} {
-      allow read: if isOwner(userId) || isSuperAdmin();
+      // Liberamos listagem básica para permitir o fluxo de login (AuthScreen)
+      allow list: if isAuthenticated();
+      allow get: if isOwner(userId) || isSuperAdmin();
       allow write: if isOwner(userId) || isSuperAdmin();
     }
 
     // Organizations
     match /organizations/{orgId} {
+      // Liberamos listagem para o SuperAdmin e para novos usuários encontrarem orgs via token
       allow list: if isAuthenticated();
-      allow get: if isAuthenticated(); // Permite get por ID para validação de tokens/IDs no convite
-      allow create: if isAuthenticated(); // Anyone can create an org
+      allow get: if isAuthenticated(); 
+      allow create: if isAuthenticated(); 
       allow update, delete: if isOrgAdmin(orgId);
 
       // Users within Org
@@ -77,7 +82,7 @@ service cloud.firestore {
       // Leads within Org
       match /leads/{leadId} {
         allow read: if isOrgAdmin(orgId) || (isOrgAgent(orgId) && resource.data.assignedTo == request.auth.uid);
-        allow write: if isOrgMember(orgId) || isAuthenticated(); // AI Agent needs to write
+        allow write: if isOrgMember(orgId) || isAuthenticated();
 
         match /messages/{messageId} {
           allow read: if isOrgAdmin(orgId) || (isOrgAgent(orgId) && get(/databases/$(database)/documents/organizations/$(orgId)/leads/$(leadId)).data.assignedTo == request.auth.uid);

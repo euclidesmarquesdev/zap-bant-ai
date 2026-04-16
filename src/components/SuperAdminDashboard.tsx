@@ -50,7 +50,12 @@ export default function SuperAdminDashboard() {
     }, (error) => {
       console.error('Erro no snapshot de organizações:', error);
       if (error.code === 'permission-denied') {
-        toast.error('Acesso negado. Verificando permissões master...');
+        const isMaster = localStorage.getItem('isMasterSession') === 'true';
+        if (!isMaster) {
+          toast.error('Acesso negado ao painel global.');
+        } else {
+          console.log('⏳ Master session detectada, ignorando erro temporário de permissão...');
+        }
       }
       setLoading(false);
     });

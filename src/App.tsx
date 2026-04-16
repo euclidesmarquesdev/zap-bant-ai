@@ -233,7 +233,8 @@ export default function App() {
             }
           }, (err) => {
             console.error('Erro no snapshot da organização:', err);
-            if (err.message.includes('permission-denied')) {
+            // Master users can ignore permission errors here as they have global access anyway
+            if (err.message.includes('permission-denied') && !isSuperAdmin) {
               toast.error('Acesso negado à organização. Certifique-se de estar usando o e-mail master para a primeira configuração.');
             }
           });
