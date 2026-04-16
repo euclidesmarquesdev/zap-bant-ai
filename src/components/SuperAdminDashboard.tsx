@@ -33,12 +33,12 @@ export default function SuperAdminDashboard() {
   const [filter, setFilter] = useState<'all' | 'active' | 'inactive' | 'pending'>('all');
 
   useEffect(() => {
+    if (!auth.currentUser) return;
+
     console.log('📡 Buscando organizações...');
-    // Removendo orderBy temporariamente para garantir que orgs sem createdAt apareçam
     const q = query(collection(db, 'organizations'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const allOrgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      // Ordenação manual no cliente para evitar problemas de índice/campos ausentes
       const sortedOrgs = allOrgs.sort((a: any, b: any) => {
         const dateA = a.createdAt?.toMillis?.() || 0;
         const dateB = b.createdAt?.toMillis?.() || 0;
@@ -48,14 +48,17 @@ export default function SuperAdminDashboard() {
       setOrgs(sortedOrgs);
       setLoading(false);
     }, (error) => {
-      console.error('Erro no snapshot de organizações:', error);
+      // Ignore transient permission errors for master users in console
+      const isMaster = localStorage.getItem('isMasterSession') === 'true';
       if (error.code === 'permission-denied') {
-        const isMaster = localStorage.getItem('isMasterSession') === 'true';
         if (!isMaster) {
+          console.error('Erro no snapshot de organizações:', error);
           toast.error('Acesso negado ao painel global.');
         } else {
-          console.log('⏳ Master session detectada, ignorando erro temporário de permissão...');
+          console.log('⏳ Aguardando propagação de permissões master...');
         }
+      } else {
+        console.error('Erro no snapshot de organizações:', error);
       }
       setLoading(false);
     });

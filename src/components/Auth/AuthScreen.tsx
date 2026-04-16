@@ -44,6 +44,14 @@ export default function AuthScreen() {
       const currentEmail = user.email?.toLowerCase().trim();
       const primaryAdminEmail = adminEmail.toLowerCase().trim();
       const isPrimaryAdmin = currentEmail === primaryAdminEmail;
+      const isMasterSession = localStorage.getItem('isMasterSession') === 'true';
+
+      // Master/Primary admin doesn't need to check for invited status
+      if (isPrimaryAdmin || isMasterSession) {
+        toast.success('Login master realizado com sucesso!');
+        setLoading(false);
+        return;
+      }
 
       // Check for invited user doc or create new
       const usersRef = collection(db, 'users');
