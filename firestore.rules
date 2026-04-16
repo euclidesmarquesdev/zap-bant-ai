@@ -37,16 +37,19 @@ service cloud.firestore {
 
     // Global Users (Mapping UID to Org)
     match /users/{userId} {
+      // Regra básica: cada um lê e escreve o seu sem funções extras para evitar recursão inicial
+      allow get: if isAuthenticated() && request.auth.uid == userId;
       allow list: if isAuthenticated();
-      // Permitimos ler o próprio documento sem isSuperAdmin para evitar recursão
-      allow get: if isAuthenticated() && (request.auth.uid == userId || isSuperAdmin());
       
-      // Regras de Escrita
-      allow create, update: if isAuthenticated() && (request.auth.uid == userId) && (
-        isSuperAdmin() || 
+      // Super Admin pode ler qualquer um
+      allow read: if isSuperAdmin();
+
+      allow create: if isAuthenticated() && (request.auth.uid == userId) && (
         (request.resource.data.role == 'super_admin' && request.resource.data.bootstrapToken == "admin123") ||
         (request.resource.data.role != 'super_admin')
       );
+      
+      allow update: if isAuthenticated() && (request.auth.uid == userId || isSuperAdmin());
     }
 
     // Organizations
