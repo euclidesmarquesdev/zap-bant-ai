@@ -224,12 +224,8 @@ async function startServer() {
   app.get("/api/config", (req, res) => {
     try {
       const config = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'firebase-applet-config.json'), 'utf-8'));
-      // Only send non-sensitive info to the frontend settings page
-      const publicConfig = {
-        projectId: config.projectId,
-        firestoreDatabaseId: config.firestoreDatabaseId
-      };
-      res.json(publicConfig);
+      // No development environment, send full config for Super Admin editing
+      res.json(config);
     } catch (e) {
       res.status(500).json({ error: "Failed to read config" });
     }

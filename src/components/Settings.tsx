@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
 import { User } from 'firebase/auth';
 import { 
@@ -15,7 +15,9 @@ import {
   CheckCircle2,
   AlertCircle,
   Bot,
-  Globe
+  Globe,
+  RotateCcw,
+  Copy
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { toast } from 'sonner';
@@ -24,9 +26,10 @@ interface SettingsProps {
   user: User;
   userRole?: 'admin' | 'agent' | null;
   orgId?: string | null;
+  isSuperAdmin?: boolean;
 }
 
-export default function Settings({ user, userRole, orgId }: SettingsProps) {
+export default function Settings({ user, userRole, orgId, isSuperAdmin }: SettingsProps) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [savingFirebase, setSavingFirebase] = useState(false);
@@ -38,7 +41,8 @@ export default function Settings({ user, userRole, orgId }: SettingsProps) {
     storageBucket: '',
     messagingSenderId: '',
     appId: '',
-    firestoreDatabaseId: '(default)'
+    firestoreDatabaseId: '(default)',
+    adminEmail: ''
   });
   const [settings, setSettings] = useState({
     geminiApiKey: '',
@@ -48,6 +52,7 @@ export default function Settings({ user, userRole, orgId }: SettingsProps) {
     email: user.email || '',
     phone: '',
     orgName: '',
+    inviteToken: '',
   });
 
   useEffect(() => {
@@ -73,9 +78,11 @@ export default function Settings({ user, userRole, orgId }: SettingsProps) {
             }));
           }
           if (orgDoc.exists()) {
+            const data = orgDoc.data();
             setSettings(prev => ({
               ...prev,
-              orgName: orgDoc.data().name || ''
+              orgName: data.name || '',
+              inviteToken: data.inviteToken || ''
             }));
           }
         }
@@ -137,6 +144,27 @@ export default function Settings({ user, userRole, orgId }: SettingsProps) {
       toast.error(error.message);
     } finally {
       setSavingFirebase(false);
+    }
+  };
+
+  const handleRegenerateInviteToken = async () => {
+    if (!orgId) return;
+    const characters = 'abcdefghijklmnopqrstuvwxyz0123456789';
+    let newToken = '';
+    for (let i = 0; i < 16; i++) {
+        newToken += characters.charAt(Math.floor(Math.random() * characters.length));
+    }
+
+    try {
+        await updateDoc(doc(db, 'organizations', orgId), {
+            inviteToken: newToken,
+            updatedAt: serverTimestamp()
+        });
+        setSettings(prev => ({ ...prev, inviteToken: newToken }));
+        toast.success('Novo link gerado com sucesso!');
+    } catch (error) {
+        console.error('Erro ao gerar novo token:', error);
+        toast.error('Erro ao gerar novo link de convite.');
     }
   };
 
@@ -217,12 +245,33 @@ export default function Settings({ user, userRole, orgId }: SettingsProps) {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-500 uppercase">API Key</label>
+                  <input 
+                    type={showApiKey ? "text" : "password"}
+                    value={fbConfig.apiKey}
+                    onChange={e => setFbConfig({...fbConfig, apiKey: e.target.value})}
+                    disabled={!isSuperAdmin}
+                    className={`w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all font-mono ${!isSuperAdmin ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : ''}`}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-500 uppercase">Auth Domain</label>
+                  <input 
+                    type="text" 
+                    value={fbConfig.authDomain}
+                    onChange={e => setFbConfig({...fbConfig, authDomain: e.target.value})}
+                    disabled={!isSuperAdmin}
+                    className={`w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all ${!isSuperAdmin ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : ''}`}
+                  />
+                </div>
+                <div className="space-y-2">
                   <label className="text-xs font-bold text-slate-500 uppercase">Project ID</label>
                   <input 
                     type="text" 
                     value={fbConfig.projectId}
-                    disabled
-                    className="w-full px-4 py-2 bg-slate-100 border border-slate-200 rounded-xl text-xs text-slate-500 cursor-not-allowed"
+                    onChange={e => setFbConfig({...fbConfig, projectId: e.target.value})}
+                    disabled={!isSuperAdmin}
+                    className={`w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all ${!isSuperAdmin ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : ''}`}
                   />
                 </div>
                 <div className="space-y-2">
@@ -230,15 +279,69 @@ export default function Settings({ user, userRole, orgId }: SettingsProps) {
                   <input 
                     type="text" 
                     value={fbConfig.firestoreDatabaseId}
-                    disabled
-                    className="w-full px-4 py-2 bg-slate-100 border border-slate-200 rounded-xl text-xs text-slate-500 cursor-not-allowed"
+                    onChange={e => setFbConfig({...fbConfig, firestoreDatabaseId: e.target.value})}
+                    disabled={!isSuperAdmin}
+                    className={`w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all ${!isSuperAdmin ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : ''}`}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-500 uppercase">Storage Bucket</label>
+                  <input 
+                    type="text" 
+                    value={fbConfig.storageBucket}
+                    onChange={e => setFbConfig({...fbConfig, storageBucket: e.target.value})}
+                    disabled={!isSuperAdmin}
+                    className={`w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all ${!isSuperAdmin ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : ''}`}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-500 uppercase">App ID</label>
+                  <input 
+                    type="text" 
+                    value={fbConfig.appId}
+                    onChange={e => setFbConfig({...fbConfig, appId: e.target.value})}
+                    disabled={!isSuperAdmin}
+                    className={`w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all ${!isSuperAdmin ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : ''}`}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-500 uppercase">Messaging Sender ID</label>
+                  <input 
+                    type="text" 
+                    value={fbConfig.messagingSenderId}
+                    onChange={e => setFbConfig({...fbConfig, messagingSenderId: e.target.value})}
+                    disabled={!isSuperAdmin}
+                    className={`w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all ${!isSuperAdmin ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : ''}`}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-500 uppercase">Super Admin Email (Mestre)</label>
+                  <input 
+                    type="email" 
+                    value={fbConfig.adminEmail}
+                    onChange={e => setFbConfig({...fbConfig, adminEmail: e.target.value})}
+                    disabled={!isSuperAdmin}
+                    className={`w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all ${!isSuperAdmin ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : ''}`}
                   />
                 </div>
               </div>
 
+              {isSuperAdmin && (
+                <div className="flex justify-end">
+                  <button 
+                    onClick={handleSaveFirebase}
+                    disabled={savingFirebase}
+                    className="flex items-center gap-2 px-6 py-2 bg-slate-900 text-white text-xs font-bold rounded-xl hover:bg-black transition-all shadow-lg shadow-slate-200 disabled:opacity-50"
+                  >
+                    {savingFirebase ? <Loader2 className="w-3 h-3 animate-spin" /> : <Shield className="w-3 h-3" />}
+                    {savingFirebase ? 'Sincronizando...' : 'Atualizar Infraestrutura'}
+                  </button>
+                </div>
+              )}
+
               <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200">
                 <p className="text-[10px] text-slate-500 leading-relaxed">
-                  As chaves de infraestrutura (API Key, Auth Domain, etc) são gerenciadas pelo servidor para maior segurança e não podem ser editadas diretamente pelo painel.
+                  {isSuperAdmin ? 'Atenção: A alteração desses campos afetará todos os usuários da plataforma. Use com cuidado.' : 'As chaves de infraestrutura são gerenciadas pelo Super Admin para maior segurança e não podem ser editadas diretamente por administradores de organização.'}
                 </p>
               </div>
             </section>
@@ -273,17 +376,25 @@ export default function Settings({ user, userRole, orgId }: SettingsProps) {
                   <div className="flex items-center gap-2">
                     <input 
                       readOnly
-                      value={`${window.location.origin}/login?org=${orgId}`}
+                      value={`${window.location.origin}/login?org=${settings.inviteToken || orgId}`}
                       className="flex-1 px-3 py-2 bg-white border border-purple-200 rounded-lg text-[10px] font-mono text-purple-900"
                     />
                     <button 
                       onClick={() => {
-                        navigator.clipboard.writeText(`${window.location.origin}/login?org=${orgId}`);
+                        navigator.clipboard.writeText(`${window.location.origin}/login?org=${settings.inviteToken || orgId}`);
                         toast.success('Link copiado!');
                       }}
-                      className="px-3 py-2 bg-purple-600 text-white text-[10px] font-bold rounded-lg hover:bg-purple-700 transition-all"
+                      className="px-3 py-2 bg-purple-600 text-white text-[10px] font-bold rounded-lg hover:bg-purple-700 transition-all shadow-sm"
                     >
-                      Copiar Link
+                      <Copy className="w-3 h-3" />
+                    </button>
+                    <button 
+                      onClick={handleRegenerateInviteToken}
+                      className="px-3 py-2 bg-white border border-slate-200 text-slate-600 text-[10px] font-bold rounded-lg hover:bg-slate-50 transition-all shadow-sm flex items-center gap-1"
+                      title="Gerar novo link (tokens anteriores pararão de funcionar)"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      Novo Link
                     </button>
                   </div>
                 </div>

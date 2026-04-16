@@ -19,7 +19,18 @@ export default function OrgRegistration({ user, onComplete }: OrgRegistrationPro
     setLoading(true);
 
     try {
-      const orgId = orgName.toLowerCase().trim().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+      // Gera IDs aleatórios para organização e token de convite
+      const characters = 'abcdefghijklmnopqrstuvwxyz0123456789';
+      const generateToken = () => {
+        let res = '';
+        for (let i = 0; i < 16; i++) {
+          res += characters.charAt(Math.floor(Math.random() * characters.length));
+        }
+        return res;
+      };
+
+      const orgId = generateToken();
+      const inviteToken = generateToken();
       
       // 1. Create Organization
       await setDoc(doc(db, 'organizations', orgId), {
@@ -27,6 +38,7 @@ export default function OrgRegistration({ user, onComplete }: OrgRegistrationPro
         name: orgName,
         ownerUid: user.uid,
         status: 'pending',
+        inviteToken,
         active: false,
         plan: 'free',
         createdAt: serverTimestamp(),

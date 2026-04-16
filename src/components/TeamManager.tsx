@@ -13,24 +13,38 @@ interface TeamManagerProps {
 export default function TeamManager({ currentUserEmail, orgId }: TeamManagerProps) {
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [inviteToken, setInviteToken] = useState<string>('');
   const [showAddForm, setShowAddForm] = useState(false);
   const [newUser, setNewUser] = useState({ email: '', name: '', phone: '', role: 'agent' as 'admin' | 'agent' });
   const [isAdding, setIsAdding] = useState(false);
   const PRIMARY_ADMIN_EMAIL = adminEmail;
-  const PORTAL_URL = `${window.location.origin}/login?org=${orgId}`;
-
   useEffect(() => {
     if (!orgId) return;
+    
+    // Fetch users
     const q = query(collection(db, 'organizations', orgId, 'users'), orderBy('email', 'asc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    const unsubscribeUsers = onSnapshot(q, (snapshot) => {
       setUsers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       setLoading(false);
     }, (err) => {
       console.error('Erro no snapshot da equipe:', err);
       setLoading(false);
     });
-    return () => unsubscribe();
+
+    // Fetch org token
+    const unsubscribeOrg = onSnapshot(doc(db, 'organizations', orgId), (snap) => {
+      if (snap.exists()) {
+        setInviteToken(snap.data().inviteToken || '');
+      }
+    });
+
+    return () => {
+      unsubscribeUsers();
+      unsubscribeOrg();
+    };
   }, [orgId]);
+
+  const PORTAL_URL = `${window.location.origin}/login?org=${inviteToken || orgId}`;
 
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();

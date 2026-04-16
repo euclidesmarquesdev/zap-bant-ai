@@ -23,6 +23,7 @@ export default function Dashboard({ onSelectLead, userPhone, userRole, userId, o
   const [leads, setLeads] = useState<any[]>([]);
   const [agents, setAgents] = useState<any[]>([]);
   const [period, setPeriod] = useState<Period>('semana');
+  const [inviteToken, setInviteToken] = useState<string>('');
 
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
@@ -154,7 +155,21 @@ export default function Dashboard({ onSelectLead, userPhone, userRole, userId, o
 
     fetchLeads();
     const interval = setInterval(fetchLeads, 30000);
-    return () => clearInterval(interval);
+
+    // Fetch Invite Token
+    let unsubscribeOrg: (() => void) | null = null;
+    if (orgId) {
+      unsubscribeOrg = onSnapshot(doc(db, 'organizations', orgId), (snap) => {
+        if (snap.exists()) {
+          setInviteToken(snap.data().inviteToken || '');
+        }
+      });
+    }
+
+    return () => {
+      clearInterval(interval);
+      if (unsubscribeOrg) unsubscribeOrg();
+    };
   }, [period, userRole, userId, orgId]);
 
   const stats = useMemo(() => {
@@ -220,10 +235,10 @@ export default function Dashboard({ onSelectLead, userPhone, userRole, userId, o
               <p className="text-blue-100 text-sm">Compartilhe o link abaixo com sua equipe para que eles possam logar e atender os leads desta organização.</p>
             </div>
             <div className="relative z-10 flex items-center gap-3 bg-white/10 backdrop-blur-md p-2 pl-4 rounded-2xl border border-white/20 w-full md:w-auto">
-              <code className="text-sm font-mono font-bold truncate max-w-[200px] md:max-w-none">{`${window.location.origin}/login?org=${orgId}`}</code>
+              <code className="text-sm font-mono font-bold truncate max-w-[200px] md:max-w-none">{`${window.location.origin}/login?org=${inviteToken || orgId}`}</code>
               <button 
                 onClick={() => {
-                  navigator.clipboard.writeText(`${window.location.origin}/login?org=${orgId}`);
+                  navigator.clipboard.writeText(`${window.location.origin}/login?org=${inviteToken || orgId}`);
                   toast.success('Link copiado!');
                 }}
                 className="p-2 bg-white text-blue-600 rounded-xl hover:bg-blue-50 transition-all shadow-lg"

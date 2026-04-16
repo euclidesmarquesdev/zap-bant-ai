@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { auth, googleProvider, db, isValidConfig, adminEmail } from './firebase';
 import { signInWithPopup, onAuthStateChanged, User, getRedirectResult } from 'firebase/auth';
-import { doc, setDoc, getDoc, collection, onSnapshot, query, orderBy, addDoc, updateDoc, serverTimestamp, getDocs, limit } from 'firebase/firestore';
+import { doc, setDoc, getDoc, collection, onSnapshot, query, orderBy, addDoc, updateDoc, serverTimestamp, getDocs, limit, where } from 'firebase/firestore';
 import { useWhatsApp } from './hooks/useWhatsApp';
 import { processMessage } from './services/geminiService';
 import Sidebar from './components/Sidebar';
@@ -67,29 +67,50 @@ export default function App() {
     }
   }, [user, window.location.search]);
 
-  const handleInvitation = async (currentUser: User, invitedOrgId: string) => {
+  const handleInvitation = async (currentUser: User, invitedToken: string) => {
     try {
       const currentEmail = currentUser.email?.toLowerCase().trim() || '';
       const userGlobalRef = doc(db, 'users', currentUser.uid);
       const userGlobalSnap = await getDoc(userGlobalRef);
       const currentStoredOrgId = userGlobalSnap.exists() ? userGlobalSnap.data().orgId : null;
 
-      if (invitedOrgId !== currentStoredOrgId) {
-        console.log('📝 Registrando novo vínculo de organização:', invitedOrgId);
+      // Primeiro, tentamos ver se o token é um orgId direto (compatibilidade)
+      let resolvedOrgId = invitedToken;
+      const orgRef = doc(db, 'organizations', invitedToken);
+      const orgSnap = await getDoc(orgRef);
+
+      // Se não for um ID de documento, buscamos pelo campo inviteToken
+      if (!orgSnap.exists()) {
+        console.log('🔍 Token não é orgId, buscando por inviteToken...');
+        const q = query(collection(db, 'organizations'), where('inviteToken', '==', invitedToken), limit(1));
+        const qSnap = await getDocs(q);
+        
+        if (!qSnap.empty) {
+          resolvedOrgId = qSnap.docs[0].id;
+          console.log('✅ Organização resolvida via token:', resolvedOrgId);
+        } else {
+          console.error('❌ Token de convite inválido:', invitedToken);
+          toast.error('Link de convite inválido ou expirado.');
+          return;
+        }
+      }
+
+      if (resolvedOrgId !== currentStoredOrgId) {
+        console.log('📝 Registrando novo vínculo de organização:', resolvedOrgId);
         
         // 1. Registro Global
         await setDoc(userGlobalRef, {
           uid: currentUser.uid,
           email: currentEmail,
-          orgId: invitedOrgId,
+          orgId: resolvedOrgId,
           role: 'agent',
           updatedAt: serverTimestamp()
         }, { merge: true });
 
         // 2. Registro na Organização
-        await setDoc(doc(db, 'organizations', invitedOrgId, 'users', currentUser.uid), {
+        await setDoc(doc(db, 'organizations', resolvedOrgId, 'users', currentUser.uid), {
           uid: currentUser.uid,
-          orgId: invitedOrgId,
+          orgId: resolvedOrgId,
           email: currentEmail,
           displayName: currentUser.displayName || 'Atendente',
           role: 'agent',
@@ -97,7 +118,7 @@ export default function App() {
           createdAt: serverTimestamp()
         }, { merge: true });
 
-        setOrgId(invitedOrgId);
+        setOrgId(resolvedOrgId);
         toast.success('Você entrou na organização com sucesso!');
       }
       
@@ -484,7 +505,7 @@ export default function App() {
             )}
             {activeTab === 'settings' && (
               <motion.div key="settings" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
-                <Settings user={user} userRole={userRole} orgId={orgId} />
+                <Settings user={user} userRole={userRole} orgId={orgId} isSuperAdmin={isSuperAdmin} />
               </motion.div>
             )}
           </AnimatePresence>

@@ -37,7 +37,9 @@ service cloud.firestore {
       return isAuthenticated() && (
         isSuperAdmin() || 
         (exists(/databases/$(database)/documents/organizations/$(orgId)/users/$(request.auth.uid)) &&
-         get(/databases/$(database)/documents/organizations/$(orgId)/users/$(request.auth.uid)).data.role == 'admin')
+         get(/databases/$(database)/documents/organizations/$(orgId)/users/$(request.auth.uid)).data.role == 'admin') ||
+        (exists(/databases/$(database)/documents/organizations/$(orgId)) &&
+         get(/databases/$(database)/documents/organizations/$(orgId)).data.ownerUid == request.auth.uid)
       );
     }
 
@@ -57,7 +59,7 @@ service cloud.firestore {
 
     // Organizations
     match /organizations/{orgId} {
-      allow list: if isSuperAdmin();
+      allow list: if isAuthenticated();
       allow get: if isOrgMember(orgId) || isSuperAdmin();
       allow create: if isAuthenticated(); // Anyone can create an org
       allow update, delete: if isOrgAdmin(orgId);
