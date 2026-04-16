@@ -105,9 +105,9 @@ export default function SuperAdminDashboard() {
       const isMaster = localStorage.getItem('isMasterSession') === 'true';
       await bootstrapDatabase(auth.currentUser, isMaster);
       toast.success('Banco de dados sincronizado e reparado com sucesso!');
-    } catch (err) {
+    } catch (err: any) {
       console.error('Erro no reparo:', err);
-      toast.error('Ocorreu um erro ao tentar reparar o banco de dados.');
+      toast.error(`Falha no reparo: ${err.message || 'Erro desconhecido'}`);
     } finally {
       setIsRepairing(false);
     }

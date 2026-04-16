@@ -184,9 +184,10 @@ export default function App() {
           console.log('📂 Organização atual do usuário:', currentOrgId);
         }
 
-        // If primary admin, ensure they have the master-org and admin role
-        if (isPrimaryAdmin) {
+        // If primary admin or master session, prioritize master-org if nothing else is set
+        if (isPrimaryAdmin || masterSessionActive) {
           currentOrgId = currentOrgId || 'master-org';
+          console.log('👑 Super Admin/Master - Usando organização:', currentOrgId);
         }
 
         if (currentOrgId) {
