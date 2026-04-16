@@ -6,11 +6,15 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
     // MASTER ACCESS: O e-mail abaixo tem acesso total e irrestrito ao sistema
     function isMasterUser() {
       return isAuthenticated() && 
-             (request.auth.token.email == "euclidesmarques.dev@gmail.com" || 
-              request.auth.token.email == "euclidesmarques.dev@gmail.com");
+             "email" in request.auth.token &&
+             (request.auth.token.email.lower() == "euclidesmarques.dev@gmail.com");
     }
 
     match /{document=**} {
@@ -28,8 +32,7 @@ service cloud.firestore {
     function isOrgMember(orgId) {
       return isAuthenticated() && (
         isSuperAdmin() ||
-        request.auth.token.orgId == orgId || 
-        exists(/databases/$(database)/documents/organizations/$(orgId)/users/$(request.auth.uid))
+        (exists(/databases/$(database)/documents/organizations/$(orgId)/users/$(request.auth.uid)))
       );
     }
 
@@ -60,7 +63,7 @@ service cloud.firestore {
     // Organizations
     match /organizations/{orgId} {
       allow list: if isAuthenticated();
-      allow get: if isOrgMember(orgId) || isSuperAdmin();
+      allow get: if isAuthenticated(); // Permite get por ID para validação de tokens/IDs no convite
       allow create: if isAuthenticated(); // Anyone can create an org
       allow update, delete: if isOrgAdmin(orgId);
 
@@ -68,13 +71,7 @@ service cloud.firestore {
       match /users/{userId} {
         allow read: if isOrgMember(orgId);
         allow write: if isOrgAdmin(orgId) || isSuperAdmin() ||
-                      (isOwner(userId) && (
-                        // Permite que o próprio usuário se registre como agente ao entrar via link
-                        (request.resource.data.role == 'agent' && request.resource.data.orgId == orgId) ||
-                        // Ou se ele já tiver o vínculo global (regra antiga mantida por segurança)
-                        (exists(/databases/$(database)/documents/users/$(userId)) &&
-                         get(/databases/$(database)/documents/users/$(userId)).data.orgId == orgId)
-                      ));
+                      (isOwner(userId) && request.resource.data.orgId == orgId);
       }
 
       // Leads within Org
@@ -105,10 +102,6 @@ service cloud.firestore {
         allow read: if isOrgMember(orgId);
         allow write: if isOrgAdmin(orgId);
       }
-    }
-
-    function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
     }
   }
 }

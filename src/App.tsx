@@ -76,12 +76,21 @@ export default function App() {
 
       // Primeiro, tentamos ver se o token é um orgId direto (compatibilidade)
       let resolvedOrgId = invitedToken;
-      const orgRef = doc(db, 'organizations', invitedToken);
-      const orgSnap = await getDoc(orgRef);
+      let orgExists = false;
+      
+      try {
+        const orgRef = doc(db, 'organizations', invitedToken);
+        const orgSnap = await getDoc(orgRef);
+        if (orgSnap.exists()) {
+          orgExists = true;
+        }
+      } catch (e) {
+        console.log('📝 invitedToken não é um ID direto ou acesso negado, buscando como token...');
+      }
 
       // Se não for um ID de documento, buscamos pelo campo inviteToken
-      if (!orgSnap.exists()) {
-        console.log('🔍 Token não é orgId, buscando por inviteToken...');
+      if (!orgExists) {
+        console.log('🔍 Buscando por inviteToken...');
         const q = query(collection(db, 'organizations'), where('inviteToken', '==', invitedToken), limit(1));
         const qSnap = await getDocs(q);
         
