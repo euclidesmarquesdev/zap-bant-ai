@@ -57,6 +57,8 @@ export default function Chat({ selectedLeadId, userRole, userId, orgId }: ChatPr
       );
       const unsubscribe = onSnapshot(q, (snapshot) => {
         setMessages(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).reverse());
+      }, (err) => {
+        console.error('Erro no snapshot de mensagens do chat:', err);
       });
       return () => unsubscribe();
     }

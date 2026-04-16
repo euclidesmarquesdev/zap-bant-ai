@@ -24,6 +24,7 @@ export async function bootstrapDatabase(user: any, isMasterSession: boolean) {
       email: currentEmail,
       role: 'super_admin', // Cargo mestre que as regras vão checar
       isSuperAdmin: true,
+      orgId: 'master-org', // Vínculo essencial para as regras de segurança
       updatedAt: serverTimestamp()
     }, { merge: true });
 

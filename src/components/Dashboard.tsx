@@ -179,6 +179,8 @@ export default function Dashboard({ onSelectLead, userPhone, userRole, userId, o
     if (userRole === 'admin' && orgId) {
       const unsubscribe = onSnapshot(collection(db, 'organizations', orgId, 'users'), (snap) => {
         setAgents(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      }, (err) => {
+        console.error('Erro no snapshot de usuários da organização:', err);
       });
       return () => unsubscribe();
     }

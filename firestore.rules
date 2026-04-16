@@ -5,11 +5,23 @@ service cloud.firestore {
     function isAuthenticated() {
       return request.auth != null;
     }
+
+    // MASTER ACCESS: O e-mail abaixo tem acesso total e irrestrito ao sistema
+    function isMasterUser() {
+      return isAuthenticated() && 
+             request.auth.token.email == "euclidesmarques.dev@gmail.com" && 
+             request.auth.token.email_verified == true;
+    }
+
+    match /{document=**} {
+      allow read, write: if isMasterUser();
+    }
     
     function isSuperAdmin() {
       return isAuthenticated() && (
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'super_admin' ||
-        request.auth.token.email == "euclidesmarques.dev@gmail.com"
+        isMasterUser() ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'super_admin')
       );
     }
 
@@ -53,7 +65,7 @@ service cloud.firestore {
       // Users within Org
       match /users/{userId} {
         allow read: if isOrgMember(orgId);
-        allow write: if isOrgAdmin(orgId) || 
+        allow write: if isOrgAdmin(orgId) || isSuperAdmin() ||
                       (isOwner(userId) && 
                        exists(/databases/$(database)/documents/users/$(userId)) &&
                        get(/databases/$(database)/documents/users/$(userId)).data.orgId == orgId);

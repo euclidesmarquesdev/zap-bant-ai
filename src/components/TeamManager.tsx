@@ -25,6 +25,9 @@ export default function TeamManager({ currentUserEmail, orgId }: TeamManagerProp
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setUsers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       setLoading(false);
+    }, (err) => {
+      console.error('Erro no snapshot da equipe:', err);
+      setLoading(false);
     });
     return () => unsubscribe();
   }, [orgId]);

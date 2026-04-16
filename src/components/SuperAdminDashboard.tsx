@@ -35,6 +35,12 @@ export default function SuperAdminDashboard() {
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setOrgs(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       setLoading(false);
+    }, (error) => {
+      console.error('Erro no snapshot de organizações:', error);
+      if (error.code === 'permission-denied') {
+        toast.error('Acesso negado. Verificando permissões master...');
+      }
+      setLoading(false);
     });
     return () => unsubscribe();
   }, []);

@@ -40,6 +40,7 @@ export default function App() {
   const [userData, setUserData] = useState<any>(null);
   const [welcomeSettings, setWelcomeSettings] = useState<any>(null);
   const [isRoleLoading, setIsRoleLoading] = useState(true);
+  const [isBootstrapping, setIsBootstrapping] = useState(false);
   const [activeTab, setActiveTab] = useState(localStorage.getItem('isMasterSession') === 'true' ? 'super_admin' : 'dashboard');
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [trainingData, setTrainingData] = useState({ agentMd: '', shopMd: '' });
@@ -81,8 +82,15 @@ export default function App() {
 
         // 🚀 Bootstrap Idempotente de Hierarquia
         if (isPrimaryAdmin) {
-          await bootstrapDatabase(user, isMasterSession);
-          setActiveTab('super_admin');
+          try {
+            setIsBootstrapping(true);
+            await bootstrapDatabase(user, isMasterSession);
+          } catch (err) {
+            console.error('Erro no bootstrap:', err);
+          } finally {
+            setIsBootstrapping(false);
+            setActiveTab('super_admin');
+          }
         }
 
         // 1. Fetch User Global Record to get orgId
@@ -136,6 +144,8 @@ export default function App() {
             if (snap.exists()) {
               setOrgStatus(snap.data().status || (snap.data().active ? 'active' : 'inactive'));
             }
+          }, (err) => {
+            console.error('Erro no snapshot da organização:', err);
           });
 
           // 2. Fetch User Data from Org
@@ -162,6 +172,9 @@ export default function App() {
               setUserRole('agent');
             }
             setIsRoleLoading(false);
+          }, (err) => {
+            console.error('Erro no snapshot do usuário:', err);
+            setIsRoleLoading(false);
           });
 
           // 3. Training Data
@@ -177,12 +190,16 @@ export default function App() {
                   await setDoc(configRef, data);
                 }).catch(console.error);
             }
+          }, (err) => {
+            console.error('Erro no snapshot de treinamento:', err);
           });
 
           // 4. Welcome Settings
           const welcomeRef = doc(db, 'organizations', currentOrgId, 'settings', 'welcome');
           unsubscribeWelcome = onSnapshot(welcomeRef, (snap) => {
             if (snap.exists()) setWelcomeSettings(snap.data());
+          }, (err) => {
+            console.error('Erro no snapshot de boas-vindas:', err);
           });
         } else {
           // No org found and not primary admin
@@ -319,14 +336,16 @@ export default function App() {
     return <WaitingApproval />;
   }
 
-  if (isRoleLoading) {
+  if (isRoleLoading || isBootstrapping) {
     return (
       <div className="h-screen flex items-center justify-center bg-slate-50">
         <div className="flex flex-col items-center gap-4">
           <div className="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-200">
             <Bot className="text-white w-8 h-8 animate-pulse" />
           </div>
-          <p className="text-slate-500 font-medium animate-pulse">Carregando perfil...</p>
+          <p className="text-slate-500 font-medium animate-pulse">
+            {isBootstrapping ? 'Configurando ambiente master...' : 'Carregando perfil...'}
+          </p>
         </div>
       </div>
     );
