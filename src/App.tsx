@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { auth, googleProvider, db, isValidConfig, adminEmail } from './firebase';
-import { signInWithPopup, onAuthStateChanged, User } from 'firebase/auth';
+import { signInWithPopup, onAuthStateChanged, User, getRedirectResult } from 'firebase/auth';
 import { doc, setDoc, getDoc, collection, onSnapshot, query, orderBy, addDoc, updateDoc, serverTimestamp, getDocs, limit } from 'firebase/firestore';
 import { useWhatsApp } from './hooks/useWhatsApp';
 import { processMessage } from './services/geminiService';
@@ -31,7 +31,11 @@ export default function App() {
   const [orgId, setOrgId] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<'admin' | 'agent' | null>(null);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
-  const [isMasterSession, setIsMasterSession] = useState(localStorage.getItem('isMasterSession') === 'true');
+  const [isMasterSession, setIsMasterSession] = useState(() => {
+    const val = localStorage.getItem('isMasterSession') === 'true';
+    console.log('Initial Master Session State:', val);
+    return val;
+  });
   const [orgStatus, setOrgStatus] = useState<'pending' | 'active' | 'inactive' | null>(null);
   const [userData, setUserData] = useState<any>(null);
   const [welcomeSettings, setWelcomeSettings] = useState<any>(null);
@@ -51,6 +55,17 @@ export default function App() {
 
     const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
       console.log('Auth State Changed:', user?.email);
+      
+      // Check for redirect result
+      try {
+        const result = await getRedirectResult(auth);
+        if (result?.user) {
+          console.log('Redirect login success:', result.user.email);
+        }
+      } catch (redirectError: any) {
+        console.error('Redirect auth error:', redirectError);
+      }
+
       if (user) {
         setUser(user);
         

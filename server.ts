@@ -212,8 +212,9 @@ async function startServer() {
 
   app.post("/api/super-admin/login", (req, res) => {
     const { username, password } = req.body;
+    console.log('Master Login Attempt:', { username, password });
     // Hardcoded Super Admin credentials as requested
-    if (username === "superadmin@email.com" && password === "admin123") {
+    if (username?.trim() === "superadmin@email.com" && password?.trim() === "admin123") {
       res.json({ success: true, token: "super-admin-token" });
     } else {
       res.status(401).json({ error: "Credenciais inválidas" });

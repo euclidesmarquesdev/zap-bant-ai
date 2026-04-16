@@ -12,6 +12,7 @@ const app = isValidConfig
 export const auth = app ? getAuth(app) : null as any;
 export const db = app ? getFirestore(app, firebaseConfig.firestoreDatabaseId) : null as any;
 export const googleProvider = new GoogleAuthProvider();
+googleProvider.setCustomParameters({ prompt: 'select_account' });
 
 // O e-mail abaixo terá poderes de Administrador Principal no sistema
 export const adminEmail = "euclidesmarques.dev@gmail.com";

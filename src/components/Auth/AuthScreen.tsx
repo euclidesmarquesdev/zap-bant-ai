@@ -1,5 +1,12 @@
 import React, { useState } from 'react';
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, updateProfile, signInWithPopup } from 'firebase/auth';
+import { 
+  signInWithEmailAndPassword, 
+  createUserWithEmailAndPassword, 
+  sendPasswordResetEmail, 
+  updateProfile, 
+  signInWithPopup,
+  signInWithRedirect
+} from 'firebase/auth';
 import { doc, setDoc, getDoc, serverTimestamp, collection, query, where, getDocs, updateDoc, deleteDoc } from 'firebase/firestore';
 import { auth, db, googleProvider, adminEmail } from '../../firebase';
 import { Bot, Mail, Lock, User, ArrowRight, Loader2, Sparkles, Chrome, Shield, ShieldAlert } from 'lucide-react';
@@ -18,9 +25,21 @@ export default function AuthScreen() {
   const [superAdminPass, setSuperAdminPass] = useState('');
   const [isMasterSession] = useState(localStorage.getItem('isMasterSession') === 'true');
 
-  const handleGoogleLogin = async () => {
+  const handleGoogleLogin = async (useRedirect = false) => {
+    const isInIframe = window.self !== window.top;
+    
+    if (isInIframe && !useRedirect) {
+      toast.info('Dica: Se o login falhar, tente o botão de redirecionamento abaixo ou abra em nova aba.', {
+        duration: 5000
+      });
+    }
+
     setLoading(true);
     try {
+      if (useRedirect) {
+        await signInWithRedirect(auth, googleProvider);
+        return;
+      }
       const { user } = await signInWithPopup(auth, googleProvider);
       const currentEmail = user.email?.toLowerCase().trim();
       const primaryAdminEmail = adminEmail.toLowerCase().trim();
@@ -96,10 +115,14 @@ export default function AuthScreen() {
         const res = await fetch('/api/super-admin/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username: superAdminUser, password: superAdminPass })
+          body: JSON.stringify({ 
+            username: superAdminUser.trim(), 
+            password: superAdminPass.trim() 
+          })
         });
         const data = await res.json();
         if (data.success) {
+          console.log('Master Login Success! Setting localStorage...');
           localStorage.setItem('isMasterSession', 'true');
           toast.success('Sessão Master Ativada! Agora entre com sua conta Google para assumir o controle global.');
           setMode('login');
@@ -172,7 +195,41 @@ export default function AuthScreen() {
       }
     } catch (error: any) {
       console.error('Auth error:', error);
-      if (error.code === 'auth/operation-not-allowed') {
+      if (error.code === 'auth/popup-closed-by-user') {
+        toast.error(
+          <div className="flex flex-col gap-2">
+            <span>A janela de login foi fechada.</span>
+            <button 
+              onClick={() => window.open(window.location.href, '_blank')}
+              className="text-[10px] bg-white text-slate-900 px-2 py-1 rounded font-bold border border-slate-200"
+            >
+              ABRIR EM NOVA ABA
+            </button>
+          </div>
+        );
+      } else if (error.code === 'auth/network-request-failed') {
+        toast.error(
+          <div className="flex flex-col gap-2">
+            <span className="font-bold">Erro de Rede (Network Error)</span>
+            <p className="text-[10px] leading-relaxed">
+              O Firebase não conseguiu se comunicar com os servidores de autenticação. 
+              Isso geralmente acontece por:
+            </p>
+            <ul className="text-[10px] list-disc ml-4 space-y-1">
+              <li>Domínio não autorizado no Firebase Console</li>
+              <li>Bloqueador de anúncios (AdBlock) ativado</li>
+              <li>Rede corporativa/Firewall bloqueando o Firebase</li>
+            </ul>
+            <button 
+              onClick={() => window.open('https://console.firebase.google.com/', '_blank')}
+              className="mt-2 text-[10px] bg-blue-600 text-white px-2 py-1 rounded font-bold"
+            >
+              CONFIGURAR DOMÍNIOS NO CONSOLE
+            </button>
+          </div>,
+          { duration: 10000 }
+        );
+      } else if (error.code === 'auth/operation-not-allowed') {
         toast.error('O login por E-mail/Senha está desativado no seu Firebase Console. Ative-o ou use o Google Login.');
       } else {
         toast.error(error.message || 'Erro na autenticação');
@@ -224,20 +281,30 @@ export default function AuthScreen() {
 
           <div className="space-y-4 mb-8">
             {isMasterSession ? (
-              <button 
-                onClick={handleGoogleLogin}
-                disabled={loading}
-                className="w-full py-5 bg-slate-900 text-white font-bold rounded-2xl hover:bg-black transition-all flex items-center justify-center gap-3 shadow-xl shadow-slate-200 disabled:opacity-50 group"
-              >
-                {loading ? (
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                ) : (
-                  <>
-                    <Chrome className="w-5 h-5 text-blue-400 group-hover:scale-110 transition-transform" />
-                    ENTRAR COMO SUPER ADMIN
-                  </>
-                )}
-              </button>
+              <div className="space-y-4">
+                <button 
+                  onClick={() => handleGoogleLogin(false)}
+                  disabled={loading}
+                  className="w-full py-5 bg-slate-900 text-white font-bold rounded-2xl hover:bg-black transition-all flex items-center justify-center gap-3 shadow-xl shadow-slate-200 disabled:opacity-50 group"
+                >
+                  {loading ? (
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                  ) : (
+                    <>
+                      <Chrome className="w-5 h-5 text-blue-400 group-hover:scale-110 transition-transform" />
+                      ENTRAR COMO SUPER ADMIN
+                    </>
+                  )}
+                </button>
+                
+                <button 
+                  onClick={() => handleGoogleLogin(true)}
+                  disabled={loading}
+                  className="w-full text-[10px] text-blue-600 hover:text-blue-800 font-bold flex items-center justify-center gap-1"
+                >
+                  Problemas com o login? Tente por redirecionamento
+                </button>
+              </div>
             ) : (
               <button 
                 onClick={handleGoogleLogin}
@@ -268,6 +335,8 @@ export default function AuthScreen() {
                   </h3>
                   <p className="text-[10px] text-slate-400 leading-relaxed">
                     Acesso restrito para administradores globais do sistema.
+                    <br />
+                    <span className="text-blue-400 font-mono">superadmin@email.com / admin123</span>
                   </p>
                 </div>
 
