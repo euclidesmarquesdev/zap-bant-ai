@@ -150,170 +150,169 @@ export default function App() {
     const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
       console.log('Auth State Changed:', user?.email);
       
-      // Check for redirect result
       try {
-        const result = await getRedirectResult(auth);
-        if (result?.user) {
-          console.log('Redirect login success:', result.user.email);
-        }
-      } catch (redirectError: any) {
-        console.error('Redirect auth error:', redirectError);
-      }
-
-      if (user) {
-        setUser(user);
-        
-        const urlParams = new URLSearchParams(window.location.search);
-        const invitedOrgId = urlParams.get('org');
-
-        const currentEmail = user.email?.toLowerCase().trim() || '';
-        const primaryAdminEmail = adminEmail.toLowerCase().trim();
-        
-        // Check localStorage directly to avoid state closure issues
-        const masterSessionActive = localStorage.getItem('isMasterSession') === 'true';
-        const isPrimaryAdmin = currentEmail === primaryAdminEmail || masterSessionActive;
-        
-        setIsSuperAdmin(isPrimaryAdmin);
-        setIsMasterSession(masterSessionActive);
-        
-        console.log('🔐 Estado de Autenticação:', { 
-          email: currentEmail, 
-          isPrimaryAdmin, 
-          masterSessionActive,
-          uid: user.uid 
-        });
-
-        // 🚀 Bootstrap Idempotente de Hierarquia
-        if (isPrimaryAdmin) {
-          try {
-            console.log('⚡ Iniciando bootstrap para Super Admin...');
-            setIsBootstrapping(true);
-            await bootstrapDatabase(user, masterSessionActive);
-            console.log('✅ Bootstrap finalizado.');
-            
-            // Força a aba para super_admin se for uma sessão master
-            if (masterSessionActive) {
-                console.log('🎯 Forçando aba Super Admin');
-                setActiveTab('super_admin');
-            }
-          } catch (err) {
-            console.error('❌ Erro no bootstrap:', err);
-          } finally {
-            setIsBootstrapping(false);
+        // Check for redirect result
+        try {
+          const result = await getRedirectResult(auth);
+          if (result?.user) {
+            console.log('Redirect login success:', result.user.email);
           }
+        } catch (redirectError: any) {
+          console.error('Redirect auth error:', redirectError);
         }
 
-        // 1. Fetch User Global Record to get orgId
-        const userGlobalRef = doc(db, 'users', user.uid);
-        const userGlobalSnap = await getDoc(userGlobalRef);
-        
-        let currentOrgId = '';
+        if (user) {
+          setUser(user);
+          
+          const urlParams = new URLSearchParams(window.location.search);
+          const invitedOrgId = urlParams.get('org');
 
-        if (userGlobalSnap.exists()) {
-          currentOrgId = userGlobalSnap.data().orgId;
-          console.log('📂 Organização atual do usuário:', currentOrgId);
-        }
-
-        // If primary admin or master session, prioritize master-org if nothing else is set
-        if (isPrimaryAdmin || masterSessionActive) {
-          currentOrgId = currentOrgId || 'master-org';
-          console.log('👑 Super Admin/Master - Usando organização:', currentOrgId);
-        }
-
-        if (currentOrgId) {
-          setOrgId(currentOrgId);
-          joinOrg(currentOrgId); // Join socket room
-          console.log('📡 Conectando à organização:', currentOrgId);
-
-          // Fetch Org Status
-          const orgRef = doc(db, 'organizations', currentOrgId);
-          onSnapshot(orgRef, (snap) => {
-            if (snap.exists()) {
-              setOrgStatus(snap.data().status || (snap.data().active ? 'active' : 'inactive'));
-            }
-          }, (err) => {
-            console.error('Erro no snapshot da organização:', err);
-            // Master users can ignore permission errors here as they have global access anyway
-            if (err.message.includes('permission-denied') && !isSuperAdmin) {
-              toast.error('Acesso negado à organização. Certifique-se de estar usando o e-mail master para a primeira configuração.');
-            }
+          const currentEmail = user.email?.toLowerCase().trim() || '';
+          const primaryAdminEmail = adminEmail.toLowerCase().trim();
+          
+          const masterSessionActive = localStorage.getItem('isMasterSession') === 'true';
+          const isPrimaryAdmin = currentEmail === primaryAdminEmail || masterSessionActive;
+          
+          setIsSuperAdmin(isPrimaryAdmin);
+          setIsMasterSession(masterSessionActive);
+          
+          console.log('🔐 Estado de Autenticação:', { 
+            email: currentEmail, 
+            isPrimaryAdmin, 
+            masterSessionActive,
+            uid: user.uid 
           });
 
-          // 2. Fetch User Data from Org
-          const userRef = doc(db, 'organizations', currentOrgId, 'users', user.uid);
-          unsubscribeUser = onSnapshot(userRef, (snap) => {
-            // Se for admin primário ou sessão master, forçamos o papel de admin
-            if (isPrimaryAdmin || masterSessionActive) {
-              console.log('👑 Super Admin detectado - Forçando papel de Administrador');
-              setUserRole('admin');
-              setUserData({
-                uid: user.uid,
-                email: currentEmail,
-                displayName: user.displayName || 'Super Admin',
-                role: 'admin',
-                active: true
-              });
+          if (isPrimaryAdmin) {
+            try {
+              console.log('⚡ Iniciando bootstrap para Super Admin...');
+              setIsBootstrapping(true);
+              await bootstrapDatabase(user, masterSessionActive);
+              console.log('✅ Bootstrap finalizado.');
               
-              if (!snap.exists()) {
-                setDoc(userRef, {
-                  uid: user.uid,
-                  orgId: currentOrgId,
-                  email: currentEmail,
-                  displayName: user.displayName,
-                  role: 'admin',
-                  active: true,
-                  createdAt: serverTimestamp()
-                }).catch(console.error);
+              if (masterSessionActive) {
+                  setActiveTab('super_admin');
               }
-            } else if (snap.exists()) {
-              console.log('👤 Usuário comum detectado - Papel:', snap.data().role);
-              setUserRole(snap.data().role);
-              setUserData(snap.data());
-            } else {
-              console.log('⚠️ Usuário não encontrado na organização - Fallback para Atendente');
-              setUserRole('agent');
+            } catch (err) {
+              console.error('❌ Erro no bootstrap:', err);
+            } finally {
+              setIsBootstrapping(false);
             }
-            setIsRoleLoading(false);
-          }, (err) => {
-            console.error('Erro no snapshot do usuário:', err);
-            setIsRoleLoading(false);
-          });
+          }
 
-          // 3. Training Data
-          const configRef = doc(db, 'organizations', currentOrgId, 'settings', 'training');
-          unsubscribeConfig = onSnapshot(configRef, (snap) => {
-            if (snap.exists()) {
-              setTrainingData(snap.data() as any);
-            } else {
-              fetch('/api/training')
-                .then(res => res.json())
-                .then(async (data) => {
-                  setTrainingData(data);
-                  await setDoc(configRef, data);
-                }).catch(console.error);
-            }
-          }, (err) => {
-            console.error('Erro no snapshot de treinamento:', err);
-          });
+          const userGlobalRef = doc(db, 'users', user.uid);
+          const userGlobalSnap = await getDoc(userGlobalRef);
+          
+          let currentOrgId = '';
+          let isSuperAdminFromDB = false;
 
-          // 4. Welcome Settings
-          const welcomeRef = doc(db, 'organizations', currentOrgId, 'settings', 'welcome');
-          unsubscribeWelcome = onSnapshot(welcomeRef, (snap) => {
-            if (snap.exists()) setWelcomeSettings(snap.data());
-          }, (err) => {
-            console.error('Erro no snapshot de boas-vindas:', err);
-          });
+          if (userGlobalSnap.exists()) {
+            const data = userGlobalSnap.data();
+            currentOrgId = data.orgId;
+            isSuperAdminFromDB = data.role === 'super_admin';
+            console.log('📂 Organização atual do usuário:', currentOrgId, '| Role:', data.role);
+          }
+
+          if (isSuperAdminFromDB) {
+            setIsSuperAdmin(true);
+          }
+
+          if (isPrimaryAdmin || masterSessionActive || isSuperAdminFromDB) {
+            currentOrgId = currentOrgId || 'master-org';
+          }
+
+          if (currentOrgId) {
+            setOrgId(currentOrgId);
+            joinOrg(currentOrgId); 
+
+            const orgRef = doc(db, 'organizations', currentOrgId);
+            onSnapshot(orgRef, (snap) => {
+              if (snap.exists()) {
+                setOrgStatus(snap.data().status || (snap.data().active ? 'active' : 'inactive'));
+              }
+            }, (err) => {
+              console.error('Erro no snapshot da organização:', err);
+              if (err.message.includes('permission-denied') && !isSuperAdmin) {
+                toast.error('Acesso negado à organização.');
+              }
+            });
+
+            const userRef = doc(db, 'organizations', currentOrgId, 'users', user.uid);
+            unsubscribeUser = onSnapshot(userRef, (snap) => {
+              if (isPrimaryAdmin || masterSessionActive || isSuperAdminFromDB) {
+                setUserRole('admin');
+                setUserData({
+                  uid: user.uid,
+                  email: currentEmail,
+                  displayName: user.displayName || 'Super Admin',
+                  role: 'admin',
+                  active: true
+                });
+                
+                if (!snap.exists()) {
+                  setDoc(userRef, {
+                    uid: user.uid,
+                    orgId: currentOrgId,
+                    email: currentEmail,
+                    displayName: user.displayName,
+                    role: 'admin',
+                    active: true,
+                    createdAt: serverTimestamp()
+                  }).catch(console.error);
+                }
+              } else if (snap.exists()) {
+                setUserRole(snap.data().role);
+                setUserData(snap.data());
+              } else {
+                setUserRole('agent');
+              }
+              setIsRoleLoading(false);
+            }, (err) => {
+              console.error('Erro no snapshot do usuário:', err);
+              setIsRoleLoading(false);
+            });
+
+            const configRef = doc(db, 'organizations', currentOrgId, 'settings', 'training');
+            unsubscribeConfig = onSnapshot(configRef, (snap) => {
+              if (snap.exists()) {
+                setTrainingData(snap.data() as any);
+              } else {
+                fetch('/api/training')
+                  .then(res => res.json())
+                  .then(async (data) => {
+                    setTrainingData(data);
+                    await setDoc(configRef, data);
+                  }).catch(console.error);
+              }
+            }, (err) => {
+              console.error('Erro no snapshot de treinamento:', err);
+            });
+
+            const welcomeRef = doc(db, 'organizations', currentOrgId, 'settings', 'welcome');
+            unsubscribeWelcome = onSnapshot(welcomeRef, (snap) => {
+              if (snap.exists()) setWelcomeSettings(snap.data());
+            }, (err) => {
+              console.error('Erro no snapshot de boas-vindas:', err);
+            });
+          } else {
+            console.log('⚠️ Nenhum OrgId encontrado');
+            setIsRoleLoading(false);
+          }
         } else {
-          // No org found and not primary admin
+          setUser(null);
+          setOrgId(null);
+          setUserRole(null);
+          setIsSuperAdmin(false);
+          setOrgStatus(null);
           setIsRoleLoading(false);
-          toast.error("Você não está vinculado a nenhuma organização.");
+          setIsMasterSession(false);
+          if (unsubscribeConfig) unsubscribeConfig();
+          if (unsubscribeUser) unsubscribeUser();
+          if (unsubscribeWelcome) unsubscribeWelcome();
         }
-      } else {
-        setUser(null);
-        setOrgId(null);
-        if (unsubscribeConfig) unsubscribeConfig();
-        if (unsubscribeUser) unsubscribeUser();
-        if (unsubscribeWelcome) unsubscribeWelcome();
+      } catch (fatalError) {
+        console.error('Fatal Auth Change Error:', fatalError);
+        setIsRoleLoading(false);
       }
     });
 

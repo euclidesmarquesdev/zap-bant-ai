@@ -57,6 +57,7 @@ export default function AuthScreen() {
       
       try {
         const querySnap = await getDocs(q);
+        const masterSessionActive = localStorage.getItem('isMasterSession') === 'true';
         
         if (!querySnap.empty) {
           // Merge with invited doc
@@ -79,7 +80,7 @@ export default function AuthScreen() {
           const userSnap = await getDoc(userRef);
           
           if (!userSnap.exists()) {
-            const role = isPrimaryAdmin ? 'admin' : 'agent';
+            const role = 'agent';
             await setDoc(userRef, {
               uid: user.uid,
               email: currentEmail,
@@ -92,8 +93,8 @@ export default function AuthScreen() {
         }
       } catch (dbError) {
         console.error('Database error during login:', dbError);
-        // If it's the primary admin, we allow them to proceed even if DB write fails
-        if (!isPrimaryAdmin) {
+        const masterSessionActive = localStorage.getItem('isMasterSession') === 'true';
+        if (!masterSessionActive) {
           throw dbError;
         }
       }

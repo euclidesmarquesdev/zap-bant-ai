@@ -11,17 +11,11 @@ service cloud.firestore {
     }
 
     // Acesso Super Admin baseado em DOCUMENTO no banco de dados
-    // Isso remove a necessidade de e-mails fixos no código das regras
     function isSuperAdmin() {
       return isAuthenticated() && (
         exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'super_admin'
       );
-    }
-
-    // Regra Global para Super Admins
-    match /{document=**} {
-      allow read, write: if isSuperAdmin();
     }
     
     function isOrgMember(orgId) {
@@ -41,21 +35,14 @@ service cloud.firestore {
       );
     }
 
-    function isOrgAgent(orgId) {
-      return isAuthenticated() && (
-        isSuperAdmin() ||
-        (exists(/databases/$(database)/documents/organizations/$(orgId)/users/$(request.auth.uid)) &&
-         get(/databases/$(database)/documents/organizations/$(orgId)/users/$(request.auth.uid)).data.role == 'agent')
-      );
-    }
-
     // Global Users (Mapping UID to Org)
     match /users/{userId} {
       allow list: if isAuthenticated();
+      // allow get: se for o próprio ou for super_admin
+      // Importante: isSuperAdmin() aqui é seguro pois isOwner resolve primeiro
       allow get: if isOwner(userId) || isSuperAdmin();
       
-      // BOOTSTRAP RULE: Permite que o primeiro Super Admin se registre usando a Senha Master
-      // como um token de validação. Isso elimina o e-mail fixo.
+      // BOOTSTRAP RULE
       allow create, update: if isOwner(userId) && (
         isSuperAdmin() || 
         (request.resource.data.role == 'super_admin' && request.resource.data.bootstrapToken == "admin123") ||
@@ -73,7 +60,6 @@ service cloud.firestore {
       // Users within Org
       match /users/{userId} {
         allow read: if isOrgMember(orgId);
-        // Permite bootstrap da Org Master também usando o token
         allow write: if isOrgAdmin(orgId) || isSuperAdmin() ||
                       (isOwner(userId) && (
                         request.resource.data.orgId == orgId ||
@@ -81,17 +67,22 @@ service cloud.firestore {
                       ));
       }
 
-      // Outras coleções seguem a lógica de sub-membros
+      // Outras coleções
       match /{allSubcollections=**} {
          allow read: if isOrgMember(orgId);
          allow write: if isOrgAdmin(orgId);
       }
       
-      // Leads & Messages (Acesso especial para agentes)
+      // Leads & Messages
       match /leads/{leadId} {
         allow write: if isAuthenticated();
+        // Permite que o lead seja criado por qualquer pessoa (público)
+        // mas lido apenas por membros da org
+        allow read: if isOrgMember(orgId);
+
         match /messages/{messageId} {
           allow write: if isAuthenticated();
+          allow read: if isOrgMember(orgId);
         }
       }
     }
