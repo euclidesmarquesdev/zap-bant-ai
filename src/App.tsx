@@ -41,7 +41,7 @@ export default function App() {
   const [welcomeSettings, setWelcomeSettings] = useState<any>(null);
   const [isRoleLoading, setIsRoleLoading] = useState(true);
   const [isBootstrapping, setIsBootstrapping] = useState(false);
-  const [activeTab, setActiveTab] = useState(localStorage.getItem('isMasterSession') === 'true' ? 'super_admin' : 'dashboard');
+  const [activeTab, setActiveTab] = useState('dashboard');
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [trainingData, setTrainingData] = useState({ agentMd: '', shopMd: '' });
   const [processedMessages] = useState(new Set<string>());
@@ -129,13 +129,18 @@ export default function App() {
 
         const currentEmail = user.email?.toLowerCase().trim() || '';
         const primaryAdminEmail = adminEmail.toLowerCase().trim();
-        const isPrimaryAdmin = currentEmail === primaryAdminEmail || isMasterSession;
+        
+        // Check localStorage directly to avoid state closure issues
+        const masterSessionActive = localStorage.getItem('isMasterSession') === 'true';
+        const isPrimaryAdmin = currentEmail === primaryAdminEmail || masterSessionActive;
+        
         setIsSuperAdmin(isPrimaryAdmin);
+        setIsMasterSession(masterSessionActive);
         
         console.log('🔐 Estado de Autenticação:', { 
           email: currentEmail, 
           isPrimaryAdmin, 
-          isMasterSession,
+          masterSessionActive,
           uid: user.uid 
         });
 
@@ -144,13 +149,15 @@ export default function App() {
           try {
             console.log('⚡ Iniciando bootstrap para Super Admin...');
             setIsBootstrapping(true);
-            await bootstrapDatabase(user, isMasterSession);
+            await bootstrapDatabase(user, masterSessionActive);
             console.log('✅ Bootstrap finalizado.');
+            
+            // Forçar a aba Super Admin para administradores mestres
+            setActiveTab('super_admin');
           } catch (err) {
             console.error('❌ Erro no bootstrap:', err);
           } finally {
             setIsBootstrapping(false);
-            setActiveTab('super_admin');
           }
         }
 
@@ -191,8 +198,18 @@ export default function App() {
           // 2. Fetch User Data from Org
           const userRef = doc(db, 'organizations', currentOrgId, 'users', user.uid);
           unsubscribeUser = onSnapshot(userRef, (snap) => {
-            if (isPrimaryAdmin) {
+            // Se for admin primário ou sessão master, forçamos o papel de admin
+            if (isPrimaryAdmin || masterSessionActive) {
+              console.log('👑 Super Admin detectado - Forçando papel de Administrador');
               setUserRole('admin');
+              setUserData({
+                uid: user.uid,
+                email: currentEmail,
+                displayName: user.displayName || 'Super Admin',
+                role: 'admin',
+                active: true
+              });
+              
               if (!snap.exists()) {
                 setDoc(userRef, {
                   uid: user.uid,
@@ -205,10 +222,11 @@ export default function App() {
                 }).catch(console.error);
               }
             } else if (snap.exists()) {
+              console.log('👤 Usuário comum detectado - Papel:', snap.data().role);
               setUserRole(snap.data().role);
               setUserData(snap.data());
             } else {
-              // Fallback if not in org users yet
+              console.log('⚠️ Usuário não encontrado na organização - Fallback para Atendente');
               setUserRole('agent');
             }
             setIsRoleLoading(false);
