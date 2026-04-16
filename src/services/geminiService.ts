@@ -22,11 +22,17 @@ export async function processMessage(
   currentLead?: any,
   userApiKey?: string
 ): Promise<BANTResult> {
-  const apiKey = userApiKey || process.env.GEMINI_API_KEY;
+  const cleanUserKey = userApiKey?.trim();
+  const apiKey = cleanUserKey || process.env.GEMINI_API_KEY;
 
-  if (!apiKey) {
+  if (!apiKey || apiKey === 'undefined') {
     throw new Error("GEMINI_API_KEY não configurada. Por favor, adicione sua chave de API nas configurações.");
   }
+
+  console.log('🧠 [GEMINI] Iniciando processamento...', { 
+    source: cleanUserKey ? 'User Key' : 'Environment Key',
+    keyPrefix: apiKey ? apiKey.substring(0, 4) + '...' : 'NONE'
+  });
 
   const aiClient = new GoogleGenAI({ apiKey });
 
@@ -88,7 +94,7 @@ export async function processMessage(
 
     try {
       const response = await aiClient.models.generateContent({
-        model: "gemini-1.5-flash",
+        model: "gemini-1.5-flash-latest",
         contents: [
           { role: "user", parts: [{ text: `Histórico: ${JSON.stringify(history)}\n\nNova mensagem: ${message}` }] }
         ],

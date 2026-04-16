@@ -332,22 +332,19 @@ export default function App() {
 
   // Process incoming WhatsApp messages
   useEffect(() => {
-    console.log('📬 [APP] Verificando nova mensagem:', { 
-      hasUser: !!user, 
-      hasOrg: !!orgId, 
-      hasMsg: !!lastMessage, 
-      hasAgentMd: !!trainingData.agentMd 
-    });
-    
     if (user && orgId && lastMessage && trainingData.agentMd) {
       const msgId = lastMessage.id || `${lastMessage.from}_${lastMessage.timestamp}`;
       if (!processedMessages.has(msgId)) {
-        console.log('🤖 [APP] Processando atendimento para:', lastMessage.from);
+        console.log('🤖 [APP] Atendimento Automático:', {
+          from: lastMessage.from,
+          hasUserApiKey: !!userData?.geminiApiKey,
+          usingEnvKey: !userData?.geminiApiKey
+        });
         processedMessages.add(msgId);
         handleIncomingMessage(lastMessage);
       }
     }
-  }, [user, orgId, lastMessage, trainingData]);
+  }, [user, orgId, lastMessage, trainingData, userData]);
 
   const handleIncomingMessage = async (msg: any) => {
     if (!user || !orgId) return;
