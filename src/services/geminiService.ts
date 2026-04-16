@@ -88,7 +88,7 @@ export async function processMessage(
 
     try {
       const response = await aiClient.models.generateContent({
-        model: "gemini-3-flash-preview",
+        model: "gemini-1.5-flash",
         contents: [
           { role: "user", parts: [{ text: `Histórico: ${JSON.stringify(history)}\n\nNova mensagem: ${message}` }] }
         ],

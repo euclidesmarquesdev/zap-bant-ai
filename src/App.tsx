@@ -248,6 +248,7 @@ export default function App() {
             const userRef = doc(db, 'organizations', currentOrgId, 'users', user.uid);
             unsubscribeUser = onSnapshot(userRef, (snap) => {
               console.log('👤 [AUTH] Snapshot Org User. Existe:', snap.exists(), 'Org:', currentOrgId);
+              const dbUserData = snap.exists() ? snap.data() : {};
               if (isPrimaryAdmin || masterSessionActive || isSuperAdminFromDB) {
                 setUserRole('admin');
                 setUserData({
@@ -255,12 +256,12 @@ export default function App() {
                   email: currentEmail,
                   displayName: user.displayName || 'Super Admin',
                   role: 'admin',
-                  active: true
+                  active: true,
+                  ...dbUserData
                 });
               } else if (snap.exists()) {
-                const data = snap.data();
-                setUserRole(data.role);
-                setUserData(data);
+                setUserRole(dbUserData.role);
+                setUserData(dbUserData);
               } else {
                 console.warn('⚠️ [AUTH] Usuário não vinculado na org:', currentOrgId);
                 setUserRole('agent');
@@ -331,9 +332,17 @@ export default function App() {
 
   // Process incoming WhatsApp messages
   useEffect(() => {
+    console.log('📬 [APP] Verificando nova mensagem:', { 
+      hasUser: !!user, 
+      hasOrg: !!orgId, 
+      hasMsg: !!lastMessage, 
+      hasAgentMd: !!trainingData.agentMd 
+    });
+    
     if (user && orgId && lastMessage && trainingData.agentMd) {
       const msgId = lastMessage.id || `${lastMessage.from}_${lastMessage.timestamp}`;
       if (!processedMessages.has(msgId)) {
+        console.log('🤖 [APP] Processando atendimento para:', lastMessage.from);
         processedMessages.add(msgId);
         handleIncomingMessage(lastMessage);
       }
@@ -342,6 +351,7 @@ export default function App() {
 
   const handleIncomingMessage = async (msg: any) => {
     if (!user || !orgId) return;
+    console.log('📩 [APP] handleIncomingMessage iniciado:', msg.body);
 
     const leadId = msg.from;
     const leadRef = doc(db, 'organizations', orgId, 'leads', leadId);
@@ -400,8 +410,9 @@ export default function App() {
 
     try {
       setTyping(leadId, 'composing');
+      console.log('🧠 [APP] Chamando Gemini para resposta...');
       const result = await processMessage(msg.body, history, trainingData.agentMd, trainingData.shopMd, currentLeadData, userData?.geminiApiKey);
-      
+      console.log('✅ [APP] Resposta Gemini gerada.');
       const updateData = {
         status: result.status,
         score: result.leadScore,
