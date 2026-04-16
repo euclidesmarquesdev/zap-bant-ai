@@ -8,9 +8,11 @@ interface HeaderProps {
   user: User;
   userPhone?: string;
   userRole?: 'admin' | 'agent' | null;
+  isSuperAdmin?: boolean;
 }
 
-export default function Header({ user, userPhone, userRole }: HeaderProps) {
+export default function Header({ user, userPhone, userRole, isSuperAdmin }: HeaderProps) {
+  const masterActive = localStorage.getItem('isMasterSession') === 'true';
   return (
     <header className="h-20 bg-white border-bottom border-slate-200 px-8 flex items-center justify-between">
       <div className="flex-1 max-w-xl">
@@ -37,6 +39,11 @@ export default function Header({ user, userPhone, userRole }: HeaderProps) {
               <p className="text-xs font-medium text-blue-600">
                 {userRole === 'admin' ? 'Administrador' : 'Atendente'}
               </p>
+              {isSuperAdmin && masterActive && (
+                 <span className="text-[9px] font-black text-white bg-slate-900 px-2 py-0.5 rounded-full mt-1 uppercase">
+                   Master Admin
+                 </span>
+              )}
               {userPhone && (
                 <span className="text-[10px] font-bold text-green-600 flex items-center gap-1">
                   <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />

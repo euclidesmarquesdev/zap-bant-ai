@@ -47,6 +47,11 @@ export default function Sidebar({ activeTab, setActiveTab, userPhone, userRole, 
             <span className="text-[8px] font-bold text-slate-300 uppercase tracking-widest mt-1">
               v2.5.1-SaaS
             </span>
+            {isSuperAdmin && localStorage.getItem('isMasterSession') === 'true' && (
+              <span className="text-[7px] font-black text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded-full mt-1 w-fit border border-blue-100 uppercase tracking-tighter">
+                Sessão Master
+              </span>
+            )}
           </div>
         </div>
       </div>

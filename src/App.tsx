@@ -41,11 +41,20 @@ export default function App() {
   const [welcomeSettings, setWelcomeSettings] = useState<any>(null);
   const [isRoleLoading, setIsRoleLoading] = useState(true);
   const [isBootstrapping, setIsBootstrapping] = useState(false);
-  const [activeTab, setActiveTab] = useState('dashboard');
+  const [activeTab, setActiveTab] = useState(() => {
+    return localStorage.getItem('isMasterSession') === 'true' ? 'super_admin' : 'dashboard';
+  });
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [trainingData, setTrainingData] = useState({ agentMd: '', shopMd: '' });
   const [processedMessages] = useState(new Set<string>());
   const { qrCode, isReady, userPhone, lastMessage, sendAIResponse, disconnect, setTyping, joinOrg } = useWhatsApp();
+  
+  // Effect force super_admin tab if master session is detected later
+  useEffect(() => {
+    if (isSuperAdmin && activeTab !== 'super_admin' && localStorage.getItem('isMasterSession') === 'true') {
+        setActiveTab('super_admin');
+    }
+  }, [isSuperAdmin]);
 
   // 🚀 Efeito para capturar convites via URL
   useEffect(() => {
@@ -152,8 +161,11 @@ export default function App() {
             await bootstrapDatabase(user, masterSessionActive);
             console.log('✅ Bootstrap finalizado.');
             
-            // Forçar a aba Super Admin para administradores mestres
-            setActiveTab('super_admin');
+            // Força a aba para super_admin se for uma sessão master
+            if (masterSessionActive) {
+                console.log('🎯 Forçando aba Super Admin');
+                setActiveTab('super_admin');
+            }
           } catch (err) {
             console.error('❌ Erro no bootstrap:', err);
           } finally {
@@ -414,7 +426,7 @@ export default function App() {
       <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} userPhone={userPhone} userRole={userRole} isSuperAdmin={isSuperAdmin} />
       
       <div className="flex-1 flex flex-col overflow-hidden">
-        <Header user={user} userPhone={userPhone} userRole={userRole} />
+        <Header user={user} userPhone={userPhone} userRole={userRole} isSuperAdmin={isSuperAdmin} />
         
         <main className="flex-1 overflow-y-auto p-6">
           <AnimatePresence mode="wait">
