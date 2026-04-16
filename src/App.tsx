@@ -141,20 +141,25 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (!isValidConfig || !auth) return;
+    console.log('🚀 [APP] useEffect inicializando. Config:', isValidConfig, 'Auth:', !!auth);
+    
+    if (!isValidConfig || !auth) {
+      console.warn('⚠️ [APP] Abortando inicialização: Config inválida ou Auth ausente.');
+      return;
+    }
 
     let unsubscribeConfig: (() => void) | null = null;
     let unsubscribeUser: (() => void) | null = null;
     let unsubscribeWelcome: (() => void) | null = null;
 
+    console.log('📡 [APP] Registrando listener onAuthStateChanged...');
     const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
-      // LOGS IMEDIATOS COM EMOJI PARA VISIBILIDADE
-      console.log('🔄 [AUTH] State Changed:', user?.email || 'Nenhum usuário');
+      console.log('🔄 [AUTH] Evento onAuthStateChanged. Usuário:', user?.email || 'NULL');
       
       try {
         if (user) {
           setUser(user);
-          setIsRoleLoading(true); // Garante que mostre loading enquanto processa
+          setIsRoleLoading(true);
           
           const masterSessionActive = localStorage.getItem('isMasterSession') === 'true';
           const primaryAdminEmail = adminEmail.toLowerCase().trim();
@@ -164,10 +169,9 @@ export default function App() {
           setIsSuperAdmin(isPrimaryAdmin);
           setIsMasterSession(masterSessionActive);
           
-          console.log('🔐 [AUTH] Identidade:', { email: currentEmail, isPrimaryAdmin, masterSessionActive });
+          console.log('🔐 [AUTH] Sessão:', { email: currentEmail, isPrimaryAdmin, masterSessionActive });
 
           // 1. Fetch User Global Record
-          console.log('👤 [AUTH] Buscando documento global users/' + user.uid);
           const userGlobalRef = doc(db, 'users', user.uid);
           let userGlobalData = null;
           
@@ -175,42 +179,43 @@ export default function App() {
             const snap = await getDoc(userGlobalRef);
             if (snap.exists()) {
               userGlobalData = snap.data();
-              console.log('✅ [AUTH] Documento global encontrado:', userGlobalData);
+              console.log('✅ [AUTH] Doc global users/' + user.uid + ' encontrado:', userGlobalData);
             } else {
-              console.log('⚠️ [AUTH] Documento global não existe para:', user.uid);
+              console.log('⚠️ [AUTH] Doc global users/' + user.uid + ' não existe.');
             }
-          } catch (e) {
-            console.error('❌ [AUTH] Erro ao ler users/' + user.uid + ':', e);
+          } catch (e: any) {
+            console.error('❌ [AUTH] Falha ao ler users/' + user.uid + ':', e.message);
           }
           
           let currentOrgId = userGlobalData?.orgId || '';
           let isSuperAdminFromDB = userGlobalData?.role === 'super_admin';
 
           if (isSuperAdminFromDB) {
-            console.log('👑 [AUTH] Role Super Admin confirmada via DB');
+            console.log('👑 [AUTH] Role Super Admin (DB) ativa');
             setIsSuperAdmin(true);
           }
 
           if (isPrimaryAdmin || masterSessionActive || isSuperAdminFromDB) {
             currentOrgId = currentOrgId || 'master-org';
+            console.log('👑 [AUTH] Acesso Administrativo forçado para org:', currentOrgId);
           }
 
           if (currentOrgId) {
-            console.log('📂 [AUTH] Organização identificada:', currentOrgId);
             setOrgId(currentOrgId);
             joinOrg(currentOrgId); 
+            console.log('📡 [AUTH] Monitorando organização:', currentOrgId);
 
-            // Snapshots
             const orgRef = doc(db, 'organizations', currentOrgId);
             onSnapshot(orgRef, (snap) => {
               if (snap.exists()) {
-                setOrgStatus(snap.data().status || (snap.data().active ? 'active' : 'inactive'));
+                const data = snap.data();
+                setOrgStatus(data.status || (data.active ? 'active' : 'inactive'));
               }
-            }, (err) => console.error('❌ [AUTH] Erro snapshot Org:', err));
+            }, (err) => console.error('❌ [AUTH] Erro Snapshot Org:', err.message));
 
             const userRef = doc(db, 'organizations', currentOrgId, 'users', user.uid);
             unsubscribeUser = onSnapshot(userRef, (snap) => {
-              console.log('👤 [AUTH] Dados do usuário na org carregados:', snap.exists());
+              console.log('👤 [AUTH] Dados do usuário na org atualizados. Existe:', snap.exists());
               if (isPrimaryAdmin || masterSessionActive || isSuperAdminFromDB) {
                 setUserRole('admin');
                 setUserData({
@@ -221,18 +226,19 @@ export default function App() {
                   active: true
                 });
               } else if (snap.exists()) {
-                setUserRole(snap.data().role);
-                setUserData(snap.data());
+                const data = snap.data();
+                setUserRole(data.role);
+                setUserData(data);
               } else {
+                console.warn('⚠️ [AUTH] Usuário não encontrado dentro da org:', currentOrgId);
                 setUserRole('agent');
               }
               setIsRoleLoading(false);
             }, (err) => {
-              console.error('❌ [AUTH] Erro snapshot User na Org:', err);
+              console.error('❌ [AUTH] Erro Snapshot User Orp:', err.message);
               setIsRoleLoading(false);
             });
 
-            // Outras configs
             const configRef = doc(db, 'organizations', currentOrgId, 'settings', 'training');
             unsubscribeConfig = onSnapshot(configRef, (snap) => {
               if (snap.exists()) setTrainingData(snap.data() as any);
@@ -243,26 +249,25 @@ export default function App() {
               if (snap.exists()) setWelcomeSettings(snap.data());
             });
           } else {
-            console.log('⚠️ [AUTH] Nenhuma organização vinculada ao usuário.');
+            console.log('⚠️ [AUTH] Nenhuma organização vinculada ao usuário final.');
             setIsRoleLoading(false);
           }
 
-          // Bootstrap Super Admin se necessário
           if (isPrimaryAdmin) {
             try {
-              console.log('⚡ [AUTH] Iniciando Bootstrap...');
+              console.log('⚡ [AUTH] Executando Bootstrap...');
               setIsBootstrapping(true);
               await bootstrapDatabase(user, masterSessionActive);
-              console.log('✅ [AUTH] Bootstrap Concluído.');
-            } catch (err) {
-              console.error('❌ [AUTH] Erro Bootstrap:', err);
+              console.log('✅ [AUTH] Bootstrap OK.');
+            } catch (err: any) {
+              console.error('❌ [AUTH] Falha no Bootstrap:', err.message);
             } finally {
               setIsBootstrapping(false);
             }
           }
 
         } else {
-          console.log('🚪 [AUTH] Usuário deslogado');
+          console.log('🚪 [AUTH] Usuário deslogado (NULL)');
           setUser(null);
           setOrgId(null);
           setUserRole(null);
@@ -273,19 +278,20 @@ export default function App() {
           if (unsubscribeUser) unsubscribeUser();
           if (unsubscribeWelcome) unsubscribeWelcome();
         }
-      } catch (fatalError) {
-        console.error('💥 [AUTH] Erro Fatal no Fluxo de Autenticação:', fatalError);
+      } catch (fatalError: any) {
+        console.error('💥 [AUTH] ERRO FATAL:', fatalError.message);
         setIsRoleLoading(false);
       }
     });
 
     return () => {
+      console.log('🧹 [APP] Limpando listeners...');
       unsubscribeAuth();
       if (unsubscribeConfig) unsubscribeConfig();
       if (unsubscribeUser) unsubscribeUser();
       if (unsubscribeWelcome) unsubscribeWelcome();
     };
-  }, []);
+  }, [auth, isValidConfig]);
 
   // Process incoming WhatsApp messages
   useEffect(() => {
