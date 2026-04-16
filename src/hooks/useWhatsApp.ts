@@ -54,8 +54,15 @@ export function useWhatsApp() {
   }, []);
 
   const sendAIResponse = (to: string, message: string) => {
-    if (socket && currentOrgId) {
+    if (socket?.connected && currentOrgId) {
       socket.emit('ai:response', { orgId: currentOrgId, to, message });
+    } else if (currentOrgId) {
+      console.warn('⚠️ [WHATSAPP] Socket desconectado. Usando fallback REST...');
+      fetch('/api/whatsapp/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orgId: currentOrgId, to, message })
+      }).catch(err => console.error('❌ [WHATSAPP] Erro no fallback REST:', err));
     }
   };
 
@@ -80,10 +87,28 @@ export function useWhatsApp() {
   };
 
   const setTyping = (to: string, status: 'composing' | 'paused') => {
-    if (socket && currentOrgId) {
+    if (socket?.connected && currentOrgId) {
       socket.emit('whatsapp:typing', { orgId: currentOrgId, to, status });
+    } else if (currentOrgId) {
+      fetch('/api/whatsapp/typing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orgId: currentOrgId, to, status })
+      }).catch(() => {});
     }
   };
 
-  return { qrCode, isReady, userPhone, lastMessage, sendAIResponse, disconnect, setTyping, joinOrg };
+  const markAsRead = (keys: any[]) => {
+    if (socket?.connected && currentOrgId) {
+      socket.emit('whatsapp:read', { orgId: currentOrgId, keys });
+    } else if (currentOrgId) {
+      fetch('/api/whatsapp/read', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orgId: currentOrgId, keys })
+      }).catch(() => {});
+    }
+  };
+
+  return { qrCode, isReady, userPhone, lastMessage, sendAIResponse, disconnect, setTyping, markAsRead, joinOrg };
 }

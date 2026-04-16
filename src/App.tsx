@@ -49,7 +49,7 @@ export default function App() {
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [trainingData, setTrainingData] = useState({ agentMd: '', shopMd: '' });
   const [processedMessages] = useState(new Set<string>());
-  const { qrCode, isReady, userPhone, lastMessage, sendAIResponse, disconnect, setTyping, joinOrg } = useWhatsApp();
+  const { qrCode, isReady, userPhone, lastMessage, sendAIResponse, disconnect, setTyping, markAsRead, joinOrg } = useWhatsApp();
   
   // Effect force super_admin tab if master session is detected later
   useEffect(() => {
@@ -349,6 +349,9 @@ export default function App() {
   const handleIncomingMessage = async (msg: any) => {
     if (!user || !orgId) return;
     console.log('📩 [APP] handleIncomingMessage iniciado:', msg.body);
+    
+    // Sinalizar visualização (Blue Checks)
+    if (msg.key) markAsRead([msg.key]);
 
     const leadId = msg.from;
     const leadRef = doc(db, 'organizations', orgId, 'leads', leadId);

@@ -153,7 +153,8 @@ async function startServer() {
                 pushName: msg.pushName || "",
                 body,
                 timestamp: new Date().toISOString(),
-                orgId
+                orgId,
+                key: msg.key
               });
             }
           }
@@ -248,6 +249,33 @@ async function startServer() {
     }
   });
 
+  app.post("/api/whatsapp/typing", async (req, res) => {
+    const { orgId, to, status } = req.body;
+    const session = sessions.get(orgId);
+    if (!session || !session.isReady) return res.status(400).json({ error: "WhatsApp not ready" });
+    
+    try {
+      let targetJid = to.includes('@') ? to : `${to}@s.whatsapp.net`;
+      await session.sock.sendPresenceUpdate(status || 'composing', targetJid);
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/whatsapp/read", async (req, res) => {
+    const { orgId, keys } = req.body;
+    const session = sessions.get(orgId);
+    if (!session || !session.isReady) return res.status(400).json({ error: "WhatsApp not ready" });
+    
+    try {
+      await session.sock.readMessages(keys);
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   app.post("/api/whatsapp/send", async (req, res) => {
     const { orgId, to, message } = req.body;
     const session = sessions.get(orgId);
@@ -291,6 +319,43 @@ async function startServer() {
       if (session) {
         if (session.qr) socket.emit('whatsapp:qr', session.qr);
         if (session.isReady) socket.emit('whatsapp:ready', { userPhone: session.userPhone });
+      }
+    });
+
+    socket.on('ai:response', async ({ orgId, to, message }) => {
+      const session = sessions.get(orgId);
+      if (!session || !session.isReady) return;
+      
+      try {
+        let targetJid = to.includes('@') ? to : `${to}@s.whatsapp.net`;
+        // Send typing off before sending message
+        await session.sock.sendPresenceUpdate('paused', targetJid);
+        await session.sock.sendMessage(targetJid, { text: message });
+      } catch (error: any) {
+        console.error(`Error sending AI response [${orgId}]:`, error.message);
+      }
+    });
+
+    socket.on('whatsapp:typing', async ({ orgId, to, status }) => {
+      const session = sessions.get(orgId);
+      if (!session || !session.isReady) return;
+
+      try {
+        let targetJid = to.includes('@') ? to : `${to}@s.whatsapp.net`;
+        await session.sock.sendPresenceUpdate(status || 'composing', targetJid);
+      } catch (error: any) {
+        console.error(`Error sending typing status [${orgId}]:`, error.message);
+      }
+    });
+
+    socket.on('whatsapp:read', async ({ orgId, keys }) => {
+      const session = sessions.get(orgId);
+      if (!session || !session.isReady) return;
+
+      try {
+        await session.sock.readMessages(keys);
+      } catch (error: any) {
+        console.error(`Error marking as read [${orgId}]:`, error.message);
       }
     });
   });
