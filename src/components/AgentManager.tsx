@@ -20,6 +20,30 @@ export default function AgentManager({ orgId }: { orgId?: string | null }) {
     fileName: ''
   });
 
+  const [isImporting, setIsImporting] = useState(false);
+
+  const loadDefaults = async () => {
+    setIsImporting(true);
+    try {
+      const response = await fetch('/api/training');
+      const data = await response.json();
+      if (data.agentMd || data.shopMd) {
+        setConfig({
+          agentMd: data.agentMd || config.agentMd,
+          shopMd: data.shopMd || config.shopMd
+        });
+        toast.success('Modelos padrão carregados! Não esqueça de salvar.');
+      } else {
+        toast.error('Nenhum modelo padrão encontrado no servidor.');
+      }
+    } catch (error) {
+      console.error('Erro ao carregar padrões:', error);
+      toast.error('Falha ao conectar com o servidor para buscar padrões.');
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
   useEffect(() => {
     async function loadConfig() {
       if (!orgId) return;
@@ -121,6 +145,24 @@ export default function AgentManager({ orgId }: { orgId?: string | null }) {
             <Sparkles className="w-5 h-5" />
             <span className="font-bold">Boas-vindas & Mídia</span>
           </button>
+
+          <div className="p-6 bg-slate-900 rounded-2xl border border-slate-800 space-y-4 shadow-xl">
+            <div className="flex items-center gap-2 text-blue-400">
+              <Sparkles className="w-5 h-5" />
+              <span className="font-bold text-sm uppercase tracking-wider">Configuração Rápida</span>
+            </div>
+            <p className="text-[10px] text-slate-400 leading-relaxed font-medium">
+              Deseja começar com nossa estrutura testada? Carregue os modelos padrão AGENT.md e SHOP.md.
+            </p>
+            <button 
+              onClick={loadDefaults}
+              disabled={isImporting}
+              className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-[10px] font-black uppercase transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+            >
+              {isImporting ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileText className="w-3 h-3" />}
+              Carregar Modelos Padrão
+            </button>
+          </div>
 
           <div className="p-6 bg-amber-50 rounded-2xl border border-amber-100 space-y-3">
             <div className="flex items-center gap-2 text-amber-700">
