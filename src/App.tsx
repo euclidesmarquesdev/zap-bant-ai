@@ -146,6 +146,9 @@ export default function App() {
             }
           }, (err) => {
             console.error('Erro no snapshot da organização:', err);
+            if (err.message.includes('permission-denied')) {
+              toast.error('Acesso negado à organização. Certifique-se de estar usando o e-mail master para a primeira configuração.');
+            }
           });
 
           // 2. Fetch User Data from Org

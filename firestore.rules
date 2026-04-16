@@ -9,8 +9,8 @@ service cloud.firestore {
     // MASTER ACCESS: O e-mail abaixo tem acesso total e irrestrito ao sistema
     function isMasterUser() {
       return isAuthenticated() && 
-             request.auth.token.email == "euclidesmarques.dev@gmail.com" && 
-             request.auth.token.email_verified == true;
+             ('email' in request.auth.token) &&
+             (request.auth.token.email.lower() == "euclidesmarques.dev@gmail.com");
     }
 
     match /{document=**} {

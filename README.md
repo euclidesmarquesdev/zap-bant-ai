@@ -1,5 +1,5 @@
 # 🤖 WhatsApp AI Sales Agent - BANT Methodology
-**Versão: 2.5.0-SaaS**
+**Versão: 2.5.1-SaaS**
 
 Este é um sistema avançado de automação de vendas via WhatsApp, integrando a inteligência do **Google Gemini AI** com a robustez do **Firebase** e a versatilidade da biblioteca **Baileys**. O foco principal é a qualificação de leads utilizando a metodologia **BANT** (Budget, Authority, Need, Timeline).
 
