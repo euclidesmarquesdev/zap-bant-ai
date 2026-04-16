@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, updateProfile, signInWithPopup } from 'firebase/auth';
 import { doc, setDoc, getDoc, serverTimestamp, collection, query, where, getDocs, updateDoc, deleteDoc } from 'firebase/firestore';
 import { auth, db, googleProvider, adminEmail } from '../../firebase';
-import { Bot, Mail, Lock, User, ArrowRight, Loader2, Sparkles, Chrome, Shield } from 'lucide-react';
+import { Bot, Mail, Lock, User, ArrowRight, Loader2, Sparkles, Chrome, Shield, ShieldAlert } from 'lucide-react';
 import { motion } from 'motion/react';
 import { toast } from 'sonner';
 
@@ -16,6 +16,7 @@ export default function AuthScreen() {
   const [name, setName] = useState('');
   const [superAdminUser, setSuperAdminUser] = useState('');
   const [superAdminPass, setSuperAdminPass] = useState('');
+  const [isMasterSession] = useState(localStorage.getItem('isMasterSession') === 'true');
 
   const handleGoogleLogin = async () => {
     setLoading(true);
@@ -171,7 +172,11 @@ export default function AuthScreen() {
       }
     } catch (error: any) {
       console.error('Auth error:', error);
-      toast.error(error.message || 'Erro na autenticação');
+      if (error.code === 'auth/operation-not-allowed') {
+        toast.error('O login por E-mail/Senha está desativado no seu Firebase Console. Ative-o ou use o Google Login.');
+      } else {
+        toast.error(error.message || 'Erro na autenticação');
+      }
     } finally {
       setLoading(false);
     }
@@ -186,41 +191,76 @@ export default function AuthScreen() {
       >
         <div className="p-10">
           <div className="flex flex-col items-center text-center mb-10">
-            <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-200 mb-6">
+            <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-200 mb-6 relative">
               <Bot className="text-white w-10 h-10" />
+              {isMasterSession && (
+                <div className="absolute -top-2 -right-2 w-6 h-6 bg-slate-900 rounded-full flex items-center justify-center border-2 border-white shadow-sm">
+                  <Shield className="w-3 h-3 text-blue-400" />
+                </div>
+              )}
             </div>
             <h1 className="text-3xl font-bold text-slate-900 tracking-tight">
-              {mode === 'login' && 'Bem-vindo'}
-              {mode === 'signup' && 'Criar Conta'}
-              {mode === 'forgot' && 'Recuperar Senha'}
+              {isMasterSession ? 'Sessão Master' : (
+                <>
+                  {mode === 'login' && 'Bem-vindo'}
+                  {mode === 'signup' && 'Criar Conta'}
+                  {mode === 'forgot' && 'Recuperar Senha'}
+                </>
+              )}
             </h1>
             <p className="text-slate-500 mt-2 text-sm">
-              {mode === 'login' && 'Acesse sua central de atendimento inteligente'}
-              {mode === 'signup' && 'Comece a qualificar seus leads com IA'}
-              {mode === 'forgot' && 'Enviaremos um link para resetar sua senha'}
+              {isMasterSession 
+                ? 'Identidade master validada. Entre com seu Google para assumir o controle.' 
+                : (
+                  <>
+                    {mode === 'login' && 'Acesse sua central de atendimento inteligente'}
+                    {mode === 'signup' && 'Comece a qualificar seus leads com IA'}
+                    {mode === 'forgot' && 'Enviaremos um link para resetar sua senha'}
+                  </>
+                )
+              }
             </p>
           </div>
 
           <div className="space-y-4 mb-8">
-            <button 
-              onClick={handleGoogleLogin}
-              disabled={loading}
-              className="w-full py-4 bg-white border border-slate-200 text-slate-700 font-bold rounded-2xl hover:bg-slate-50 transition-all flex items-center justify-center gap-3 shadow-sm disabled:opacity-50"
-            >
-              <Chrome className="w-5 h-5 text-blue-600" />
-              Continuar com Google
-            </button>
+            {isMasterSession ? (
+              <button 
+                onClick={handleGoogleLogin}
+                disabled={loading}
+                className="w-full py-5 bg-slate-900 text-white font-bold rounded-2xl hover:bg-black transition-all flex items-center justify-center gap-3 shadow-xl shadow-slate-200 disabled:opacity-50 group"
+              >
+                {loading ? (
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                ) : (
+                  <>
+                    <Chrome className="w-5 h-5 text-blue-400 group-hover:scale-110 transition-transform" />
+                    ENTRAR COMO SUPER ADMIN
+                  </>
+                )}
+              </button>
+            ) : (
+              <button 
+                onClick={handleGoogleLogin}
+                disabled={loading}
+                className="w-full py-4 bg-white border border-slate-200 text-slate-700 font-bold rounded-2xl hover:bg-slate-50 transition-all flex items-center justify-center gap-3 shadow-sm disabled:opacity-50"
+              >
+                <Chrome className="w-5 h-5 text-blue-600" />
+                Continuar com Google
+              </button>
+            )}
 
             <div className="relative flex items-center justify-center">
               <div className="absolute inset-0 flex items-center">
                 <div className="w-full border-t border-slate-100"></div>
               </div>
-              <span className="relative px-4 bg-white text-[10px] font-bold text-slate-400 uppercase tracking-widest">Ou use seu e-mail</span>
+              <span className="relative px-4 bg-white text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                {isMasterSession ? 'Ou mude de conta' : 'Ou use seu e-mail'}
+              </span>
             </div>
           </div>
 
             {mode === 'superadmin' && (
-              <div className="space-y-6">
+              <form onSubmit={handleSubmit} className="space-y-6">
                 <div className="p-4 bg-slate-900 rounded-2xl border border-slate-800 space-y-2">
                   <h3 className="text-white font-bold text-sm flex items-center gap-2">
                     <Shield className="w-4 h-4 text-blue-400" />
@@ -240,7 +280,7 @@ export default function AuthScreen() {
                       value={superAdminUser}
                       onChange={e => setSuperAdminUser(e.target.value)}
                       className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10 transition-all font-mono"
-                      placeholder="superadmin@email.com"
+                      placeholder="seu@email.com"
                     />
                   </div>
                   <div className="space-y-2">
@@ -256,9 +296,17 @@ export default function AuthScreen() {
                   </div>
                   <button 
                     type="submit"
-                    className="w-full py-4 bg-slate-900 text-white font-bold rounded-2xl hover:bg-black transition-all shadow-xl flex items-center justify-center gap-2"
+                    disabled={loading}
+                    className="w-full py-4 bg-slate-900 text-white font-bold rounded-2xl hover:bg-black transition-all shadow-xl flex items-center justify-center gap-2 disabled:opacity-50"
                   >
-                    Validar Credenciais Master
+                    {loading ? (
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                    ) : (
+                      <>
+                        <Shield className="w-5 h-5" />
+                        Validar Credenciais Master
+                      </>
+                    )}
                   </button>
                   <button 
                     type="button"
@@ -268,7 +316,7 @@ export default function AuthScreen() {
                     Voltar para Login Comum
                   </button>
                 </div>
-              </div>
+              </form>
             )}
 
             {mode !== 'superadmin' && (

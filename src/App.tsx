@@ -35,7 +35,7 @@ export default function App() {
   const [userData, setUserData] = useState<any>(null);
   const [welcomeSettings, setWelcomeSettings] = useState<any>(null);
   const [isRoleLoading, setIsRoleLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('dashboard');
+  const [activeTab, setActiveTab] = useState(localStorage.getItem('isMasterSession') === 'true' ? 'super_admin' : 'dashboard');
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [trainingData, setTrainingData] = useState({ agentMd: '', shopMd: '' });
   const [processedMessages] = useState(new Set<string>());
@@ -60,8 +60,10 @@ export default function App() {
         const primaryAdminEmail = adminEmail.toLowerCase().trim();
         const isPrimaryAdmin = currentEmail === primaryAdminEmail || isMasterSession;
         setIsSuperAdmin(isPrimaryAdmin);
+        
+        console.log('Auth Status:', { email: currentEmail, isPrimaryAdmin, isMasterSession });
 
-        if (isPrimaryAdmin && activeTab === 'dashboard') {
+        if (isPrimaryAdmin) {
           setActiveTab('super_admin');
         }
 
