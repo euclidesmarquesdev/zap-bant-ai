@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { collection, onSnapshot, query, orderBy, doc, updateDoc, getDocs, Timestamp } from 'firebase/firestore';
-import { db } from '../firebase';
+import { db, auth } from '../firebase';
+import { bootstrapDatabase } from '../services/dbSetup';
 import { 
   Building2, 
   Users, 
@@ -17,7 +18,8 @@ import {
   ExternalLink,
   Loader2,
   Filter,
-  Clock
+  Clock,
+  RotateCcw
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { format } from 'date-fns';
@@ -94,6 +96,23 @@ export default function SuperAdminDashboard() {
     }, 0),
   };
 
+  const [isRepairing, setIsRepairing] = useState(false);
+
+  const handleRepairDatabase = async () => {
+    if (!auth.currentUser) return;
+    setIsRepairing(true);
+    try {
+      const isMaster = localStorage.getItem('isMasterSession') === 'true';
+      await bootstrapDatabase(auth.currentUser, isMaster);
+      toast.success('Banco de dados sincronizado e reparado com sucesso!');
+    } catch (err) {
+      console.error('Erro no reparo:', err);
+      toast.error('Ocorreu um erro ao tentar reparar o banco de dados.');
+    } finally {
+      setIsRepairing(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="h-full flex items-center justify-center">
@@ -111,6 +130,19 @@ export default function SuperAdminDashboard() {
         </div>
 
         <div className="flex items-center gap-3">
+          <button
+            onClick={handleRepairDatabase}
+            disabled={isRepairing}
+            className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-black transition-all shadow-lg shadow-slate-200 disabled:opacity-50"
+            title="Sincroniza e recria a estrutura básica do banco se estiver faltando"
+          >
+            {isRepairing ? (
+              <Loader2 className="w-3 h-3 animate-spin" />
+            ) : (
+              <RotateCcw className="w-3 h-3" />
+            )}
+            Sincronizar Banco
+          </button>
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
             <input 

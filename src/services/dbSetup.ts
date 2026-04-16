@@ -56,6 +56,28 @@ export async function bootstrapDatabase(user: any, isMasterSession: boolean) {
       updatedAt: serverTimestamp()
     }, { merge: true });
 
+    // 4. Garante Configurações Iniciais da Master Org (Training)
+    const trainingRef = doc(db, 'organizations', masterOrgId, 'settings', 'training');
+    const trainingSnap = await getDoc(trainingRef);
+    if (!trainingSnap.exists()) {
+      await setDoc(trainingRef, {
+        agentMd: "# Master Agent Configuration\nYou are the global administrator assistant.",
+        shopMd: "# Master Services\nGlobal management and support.",
+        updatedAt: serverTimestamp()
+      });
+    }
+
+    // 5. Garante Boas-vindas Padrão
+    const welcomeRef = doc(db, 'organizations', masterOrgId, 'settings', 'welcome');
+    const welcomeSnap = await getDoc(welcomeRef);
+    if (!welcomeSnap.exists()) {
+      await setDoc(welcomeRef, {
+        text: "Bem-vindo ao Sistema Master!",
+        mediaType: "none",
+        updatedAt: serverTimestamp()
+      });
+    }
+
     console.log('✅ Bootstrap concluído com sucesso.');
     return true;
   }
