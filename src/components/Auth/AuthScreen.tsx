@@ -58,11 +58,13 @@ export default function AuthScreen() {
       try {
         const querySnap = await getDocs(q);
         const masterSessionActive = localStorage.getItem('isMasterSession') === 'true';
+        console.log('🔍 Check invited user:', currentEmail, '| Master:', masterSessionActive, '| Found:', !querySnap.empty);
         
         if (!querySnap.empty) {
           // Merge with invited doc
           const invitedDoc = querySnap.docs[0];
           const data = invitedDoc.data();
+          console.log('📥 Found invite:', data);
           
           await setDoc(doc(db, 'users', user.uid), {
             ...data,
@@ -79,6 +81,8 @@ export default function AuthScreen() {
           const userRef = doc(db, 'users', user.uid);
           const userSnap = await getDoc(userRef);
           
+          console.log('👤 Checking global user doc:', user.uid, '| Exists:', userSnap.exists());
+          
           if (!userSnap.exists()) {
             const role = 'agent';
             await setDoc(userRef, {
@@ -89,10 +93,11 @@ export default function AuthScreen() {
               active: true,
               createdAt: serverTimestamp()
             });
+            console.log('✨ Created default agent doc');
           }
         }
       } catch (dbError) {
-        console.error('Database error during login:', dbError);
+        console.error('❌ Database error during login:', dbError);
         const masterSessionActive = localStorage.getItem('isMasterSession') === 'true';
         if (!masterSessionActive) {
           throw dbError;

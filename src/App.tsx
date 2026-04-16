@@ -201,29 +201,41 @@ export default function App() {
           }
 
           const userGlobalRef = doc(db, 'users', user.uid);
-          const userGlobalSnap = await getDoc(userGlobalRef);
+          let userGlobalSnap;
+          try {
+            userGlobalSnap = await getDoc(userGlobalRef);
+          } catch (e) {
+            console.error('❌ Error fetching global user:', e);
+            // If we cant even read our own doc, something is very wrong with rules
+          }
           
           let currentOrgId = '';
           let isSuperAdminFromDB = false;
 
-          if (userGlobalSnap.exists()) {
+          if (userGlobalSnap?.exists()) {
             const data = userGlobalSnap.data();
             currentOrgId = data.orgId;
             isSuperAdminFromDB = data.role === 'super_admin';
-            console.log('📂 Organização atual do usuário:', currentOrgId, '| Role:', data.role);
+            console.log('📂 Doc Global encontrado. Org:', currentOrgId, '| Role:', data.role);
+          } else {
+            console.log('👤 Usuário global não possui documento (ou sem permissão).');
           }
 
           if (isSuperAdminFromDB) {
+            console.log('👑 Super Admin persistente (DB) detectado');
             setIsSuperAdmin(true);
           }
 
           if (isPrimaryAdmin || masterSessionActive || isSuperAdminFromDB) {
-            currentOrgId = currentOrgId || 'master-org';
+            const fallbackOrg = currentOrgId || 'master-org';
+            console.log('👑 Forçando Admin Access. Org:', fallbackOrg);
+            currentOrgId = fallbackOrg;
           }
 
           if (currentOrgId) {
             setOrgId(currentOrgId);
             joinOrg(currentOrgId); 
+            console.log('📡 Iniciando snapshots para org:', currentOrgId);
 
             const orgRef = doc(db, 'organizations', currentOrgId);
             onSnapshot(orgRef, (snap) => {

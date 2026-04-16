@@ -38,12 +38,11 @@ service cloud.firestore {
     // Global Users (Mapping UID to Org)
     match /users/{userId} {
       allow list: if isAuthenticated();
-      // allow get: se for o próprio ou for super_admin
-      // Importante: isSuperAdmin() aqui é seguro pois isOwner resolve primeiro
-      allow get: if isOwner(userId) || isSuperAdmin();
+      // Permitimos ler o próprio documento sem isSuperAdmin para evitar recursão
+      allow get: if isAuthenticated() && (request.auth.uid == userId || isSuperAdmin());
       
-      // BOOTSTRAP RULE
-      allow create, update: if isOwner(userId) && (
+      // Regras de Escrita
+      allow create, update: if isAuthenticated() && (request.auth.uid == userId) && (
         isSuperAdmin() || 
         (request.resource.data.role == 'super_admin' && request.resource.data.bootstrapToken == "admin123") ||
         (request.resource.data.role != 'super_admin')
@@ -59,9 +58,10 @@ service cloud.firestore {
 
       // Users within Org
       match /users/{userId} {
-        allow read: if isOrgMember(orgId);
+        // Permitimos o usuário ler seu próprio doc na org sem chamar isOrgMember
+        allow read: if isAuthenticated() && (request.auth.uid == userId || isOrgMember(orgId));
         allow write: if isOrgAdmin(orgId) || isSuperAdmin() ||
-                      (isOwner(userId) && (
+                      (request.auth.uid == userId && (
                         request.resource.data.orgId == orgId ||
                         request.resource.data.bootstrapToken == "admin123"
                       ));
