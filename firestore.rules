@@ -10,27 +10,20 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
-    // MASTER ACCESS: Acesso total e absoluto para o e-mail de desenvolvimento
-    function isMasterUser() {
-      return isAuthenticated() && 
-             "email" in request.auth.token &&
-             (request.auth.token.email.lower() == "euclidesmarques.dev@gmail.com" ||
-              request.auth.token.email == "euclidesmarques.dev@gmail.com");
-    }
-
-    // Regra Global de Emergência/Master - Deve estar no topo e ser a mais permissiva
-    match /{document=**} {
-      allow read, write: if isMasterUser();
-    }
-    
+    // Acesso Super Admin baseado em DOCUMENTO no banco de dados
+    // Isso remove a necessidade de e-mails fixos no código das regras
     function isSuperAdmin() {
       return isAuthenticated() && (
-        isMasterUser() ||
-        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'super_admin')
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'super_admin'
       );
     }
 
+    // Regra Global para Super Admins
+    match /{document=**} {
+      allow read, write: if isSuperAdmin();
+    }
+    
     function isOrgMember(orgId) {
       return isAuthenticated() && (
         isSuperAdmin() ||
@@ -58,15 +51,20 @@ service cloud.firestore {
 
     // Global Users (Mapping UID to Org)
     match /users/{userId} {
-      // Liberamos listagem básica para permitir o fluxo de login (AuthScreen)
       allow list: if isAuthenticated();
       allow get: if isOwner(userId) || isSuperAdmin();
-      allow write: if isOwner(userId) || isSuperAdmin();
+      
+      // BOOTSTRAP RULE: Permite que o primeiro Super Admin se registre usando a Senha Master
+      // como um token de validação. Isso elimina o e-mail fixo.
+      allow create, update: if isOwner(userId) && (
+        isSuperAdmin() || 
+        (request.resource.data.role == 'super_admin' && request.resource.data.bootstrapToken == "admin123") ||
+        (request.resource.data.role != 'super_admin')
+      );
     }
 
     // Organizations
     match /organizations/{orgId} {
-      // Liberamos listagem para o SuperAdmin e para novos usuários encontrarem orgs via token
       allow list: if isAuthenticated();
       allow get: if isAuthenticated(); 
       allow create: if isAuthenticated(); 
@@ -75,37 +73,26 @@ service cloud.firestore {
       // Users within Org
       match /users/{userId} {
         allow read: if isOrgMember(orgId);
+        // Permite bootstrap da Org Master também usando o token
         allow write: if isOrgAdmin(orgId) || isSuperAdmin() ||
-                      (isOwner(userId) && request.resource.data.orgId == orgId);
+                      (isOwner(userId) && (
+                        request.resource.data.orgId == orgId ||
+                        request.resource.data.bootstrapToken == "admin123"
+                      ));
       }
 
-      // Leads within Org
+      // Outras coleções seguem a lógica de sub-membros
+      match /{allSubcollections=**} {
+         allow read: if isOrgMember(orgId);
+         allow write: if isOrgAdmin(orgId);
+      }
+      
+      // Leads & Messages (Acesso especial para agentes)
       match /leads/{leadId} {
-        allow read: if isOrgAdmin(orgId) || (isOrgAgent(orgId) && resource.data.assignedTo == request.auth.uid);
-        allow write: if isOrgMember(orgId) || isAuthenticated();
-
+        allow write: if isAuthenticated();
         match /messages/{messageId} {
-          allow read: if isOrgAdmin(orgId) || (isOrgAgent(orgId) && get(/databases/$(database)/documents/organizations/$(orgId)/leads/$(leadId)).data.assignedTo == request.auth.uid);
-          allow write: if isOrgMember(orgId) || isAuthenticated();
+          allow write: if isAuthenticated();
         }
-      }
-
-      // Agents (AI Models) within Org
-      match /agents/{agentId} {
-        allow read: if isOrgMember(orgId);
-        allow write: if isOrgAdmin(orgId);
-      }
-
-      // Settings within Org
-      match /settings/{settingId} {
-        allow read: if isOrgMember(orgId);
-        allow write: if isOrgAdmin(orgId);
-      }
-
-      // Human Agents within Org
-      match /human_agents/{agentId} {
-        allow read: if isOrgMember(orgId);
-        allow write: if isOrgAdmin(orgId);
       }
     }
   }

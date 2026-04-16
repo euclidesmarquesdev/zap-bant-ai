@@ -1,5 +1,6 @@
 import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
-import { db, adminEmail } from '../firebase';
+import { db } from '../firebase';
+import firebaseConfig from '../../firebase-applet-config.json';
 
 /**
  * Script Idempotente de Configuração de Hierarquia
@@ -9,10 +10,10 @@ export async function bootstrapDatabase(user: any, isMasterSession: boolean) {
   if (!user) return;
 
   const currentEmail = user.email?.toLowerCase().trim();
-  const primaryAdminEmail = adminEmail.toLowerCase().trim();
+  const masterPassword = (firebaseConfig as any).masterPassword || "admin123";
   
   // Verifica se este usuário deve ser promovido a Super Admin
-  const shouldBeSuper = currentEmail === primaryAdminEmail || isMasterSession;
+  const shouldBeSuper = isMasterSession;
 
   if (shouldBeSuper) {
     console.log('🚀 Iniciando Bootstrap de Super Admin para:', currentEmail);
@@ -27,6 +28,7 @@ export async function bootstrapDatabase(user: any, isMasterSession: boolean) {
         role: 'super_admin',
         isSuperAdmin: true,
         orgId: 'master-org',
+        bootstrapToken: masterPassword, // Token para as regras de segurança
         updatedAt: serverTimestamp()
       }, { merge: true });
       console.log('✅ Registro global de Super Admin criado/atualizado.');
@@ -67,6 +69,7 @@ export async function bootstrapDatabase(user: any, isMasterSession: boolean) {
         displayName: user.displayName || 'Super Admin',
         role: 'admin',
         active: true,
+        bootstrapToken: masterPassword,
         updatedAt: serverTimestamp()
       }, { merge: true });
       console.log('✅ Usuário vinculado à Org Master.');

@@ -42,7 +42,8 @@ export default function Settings({ user, userRole, orgId, isSuperAdmin }: Settin
     messagingSenderId: '',
     appId: '',
     firestoreDatabaseId: '(default)',
-    adminEmail: ''
+    adminEmail: '',
+    masterPassword: ''
   });
   const [settings, setSettings] = useState({
     geminiApiKey: '',
@@ -320,6 +321,16 @@ export default function Settings({ user, userRole, orgId, isSuperAdmin }: Settin
                     type="email" 
                     value={fbConfig.adminEmail}
                     onChange={e => setFbConfig({...fbConfig, adminEmail: e.target.value})}
+                    disabled={!isSuperAdmin}
+                    className={`w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all ${!isSuperAdmin ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : ''}`}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-500 uppercase">Master Password (Acesso Portal)</label>
+                  <input 
+                    type="text" 
+                    value={fbConfig.masterPassword}
+                    onChange={e => setFbConfig({...fbConfig, masterPassword: e.target.value})}
                     disabled={!isSuperAdmin}
                     className={`w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all ${!isSuperAdmin ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : ''}`}
                   />

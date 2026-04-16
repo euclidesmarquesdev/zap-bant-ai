@@ -6,5 +6,7 @@
   "firestoreDatabaseId": "ai-studio-c6b0dae3-b2c0-4be8-bd5f-f05b1f2e7b1e",
   "storageBucket": "gen-lang-client-0724884668.firebasestorage.app",
   "messagingSenderId": "251352448167",
-  "measurementId": ""
+  "measurementId": "",
+  "adminEmail": "euclidesmarques.dev@gmail.com",
+  "masterPassword": "admin123"
 }

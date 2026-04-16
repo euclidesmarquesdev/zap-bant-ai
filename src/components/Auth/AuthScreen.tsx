@@ -8,7 +8,7 @@ import {
   signInWithRedirect
 } from 'firebase/auth';
 import { doc, setDoc, getDoc, serverTimestamp, collection, query, where, getDocs, updateDoc, deleteDoc } from 'firebase/firestore';
-import { auth, db, googleProvider, adminEmail } from '../../firebase';
+import { auth, db, googleProvider } from '../../firebase';
 import { Bot, Mail, Lock, User, ArrowRight, Loader2, Sparkles, Chrome, Shield, ShieldAlert } from 'lucide-react';
 import { motion } from 'motion/react';
 import { toast } from 'sonner';
@@ -42,12 +42,10 @@ export default function AuthScreen() {
       }
       const { user } = await signInWithPopup(auth, googleProvider);
       const currentEmail = user.email?.toLowerCase().trim();
-      const primaryAdminEmail = adminEmail.toLowerCase().trim();
-      const isPrimaryAdmin = currentEmail === primaryAdminEmail;
       const isMasterSession = localStorage.getItem('isMasterSession') === 'true';
 
-      // Master/Primary admin doesn't need to check for invited status
-      if (isPrimaryAdmin || isMasterSession) {
+      // Master session doesn't need to check for invited status
+      if (isMasterSession) {
         toast.success('Login master realizado com sucesso!');
         setLoading(false);
         return;
@@ -143,17 +141,11 @@ export default function AuthScreen() {
       }
 
       if (mode === 'login') {
-        const { user } = await signInWithEmailAndPassword(auth, email, password);
-        const currentEmail = user.email?.toLowerCase().trim();
-        const primaryAdminEmail = adminEmail.toLowerCase().trim();
-        const isPrimaryAdmin = currentEmail === primaryAdminEmail;
-        
+        await signInWithEmailAndPassword(auth, email, password);
         toast.success('Bem-vindo de volta!');
       } else if (mode === 'signup') {
         const { user } = await createUserWithEmailAndPassword(auth, email, password);
         const currentEmail = email.toLowerCase().trim();
-        const primaryAdminEmail = adminEmail.toLowerCase().trim();
-        const isPrimaryAdmin = currentEmail === primaryAdminEmail;
 
         await updateProfile(user, { displayName: name });
         
@@ -181,7 +173,7 @@ export default function AuthScreen() {
               await deleteDoc(doc(db, 'users', invitedDoc.id));
             }
           } else {
-            const role = isPrimaryAdmin ? 'admin' : 'agent';
+            const role = 'agent';
             await setDoc(doc(db, 'users', user.uid), {
               uid: user.uid,
               email: currentEmail,
@@ -193,7 +185,7 @@ export default function AuthScreen() {
           }
         } catch (dbError) {
           console.error('Database error during signup:', dbError);
-          if (!isPrimaryAdmin) throw dbError;
+          throw dbError;
         }
         toast.success('Conta criada com sucesso!');
       } else if (mode === 'forgot') {

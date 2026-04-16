@@ -212,12 +212,19 @@ async function startServer() {
 
   app.post("/api/super-admin/login", (req, res) => {
     const { username, password } = req.body;
-    console.log('Master Login Attempt:', { username, password });
-    // Hardcoded Super Admin credentials as requested
-    if (username?.trim() === "superadmin@email.com" && password?.trim() === "admin123") {
-      res.json({ success: true, token: "super-admin-token" });
-    } else {
-      res.status(401).json({ error: "Credenciais inválidas" });
+    
+    try {
+      const config = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'firebase-applet-config.json'), 'utf-8'));
+      const masterEmail = config.adminEmail || "superadmin@email.com";
+      const masterPass = config.masterPassword || "admin123";
+
+      if (username?.trim() === masterEmail && password?.trim() === masterPass) {
+        res.json({ success: true, token: "super-admin-token" });
+      } else {
+        res.status(401).json({ error: "Credenciais inválidas" });
+      }
+    } catch (e) {
+      res.status(500).json({ error: "Erro ao processar login" });
     }
   });
 
@@ -235,15 +242,6 @@ async function startServer() {
     try {
       const config = req.body;
       fs.writeFileSync(path.join(process.cwd(), 'firebase-applet-config.json'), JSON.stringify(config, null, 2));
-      
-      // Also update adminEmail in firebase.ts if provided
-      if (config.adminEmail) {
-        const firebaseTsPath = path.join(process.cwd(), 'src', 'firebase.ts');
-        let content = fs.readFileSync(firebaseTsPath, 'utf-8');
-        content = content.replace(/export const adminEmail = ".*";/, `export const adminEmail = "${config.adminEmail}";`);
-        fs.writeFileSync(firebaseTsPath, content);
-      }
-      
       res.json({ success: true });
     } catch (e) {
       res.status(500).json({ error: "Failed to save config" });
