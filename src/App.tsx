@@ -426,35 +426,57 @@ export default function App() {
 
   const login = () => signInWithPopup(auth, googleProvider);
 
+  // Componente de Loading Centralizado
+  const LoadingOverlay = ({ message }: { message: string }) => (
+    <div className="h-screen flex items-center justify-center bg-slate-50">
+      <div className="flex flex-col items-center gap-4">
+        <div className="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-200">
+          <Bot className="text-white w-8 h-8 animate-pulse" />
+        </div>
+        <div className="text-center">
+          <p className="text-slate-500 font-medium animate-pulse">{message}</p>
+          <p className="text-slate-400 text-[10px] mt-2 italic">Acesso via: {window.location.hostname}</p>
+        </div>
+      </div>
+    </div>
+  );
+
   if (!isValidConfig) {
     return <SetupScreen onComplete={() => window.location.reload()} />;
   }
 
+  if (isBootstrapping) {
+    return <LoadingOverlay message="Configurando ambiente master..." />;
+  }
+
+  // Se não tem usuário e ainda estamos buscando no Firebase
+  if (!user && isRoleLoading) {
+    return <AuthScreen isAuthLoading={true} />;
+  }
+
+  // Se definitivamente não há usuário logado
   if (!user) {
     return <AuthScreen />;
   }
 
+  // Daqui para baixo TEMOS usuário. Verificamos o carregamento de papéis/orgs
+  if (isRoleLoading) {
+    return <LoadingOverlay message="Carregando perfil..." />;
+  }
+
+  // Se não há organização vinculada e não é super admin
   if (!orgId && !isSuperAdmin) {
     return <OrgRegistration user={user} onComplete={(id) => setOrgId(id)} />;
   }
 
-  if (orgId && orgStatus !== 'active' && !isSuperAdmin) {
-    return <WaitingApproval />;
+  // Se há org mas o status ainda não carregou do banco
+  if (orgId && orgStatus === null && !isSuperAdmin) {
+    return <LoadingOverlay message="Validando licença..." />;
   }
 
-  if (isRoleLoading || isBootstrapping) {
-    return (
-      <div className="h-screen flex items-center justify-center bg-slate-50">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-200">
-            <Bot className="text-white w-8 h-8 animate-pulse" />
-          </div>
-          <p className="text-slate-500 font-medium animate-pulse">
-            {isBootstrapping ? 'Configurando ambiente master...' : 'Carregando perfil...'}
-          </p>
-        </div>
-      </div>
-    );
+  // Se a organização não está ativa
+  if (orgId && orgStatus !== 'active' && !isSuperAdmin) {
+    return <WaitingApproval />;
   }
 
   return (

@@ -28,19 +28,25 @@ export default function AuthScreen() {
   const [superAdminPass, setSuperAdminPass] = useState('');
   const [isMasterSession] = useState(localStorage.getItem('isMasterSession') === 'true');
 
+  const [lastAuthError, setLastAuthError] = useState<any>(null);
+
   const handleGoogleLogin = async (useRedirect = false) => {
     console.log('🔴 [AUTH_SCREEN] Click Google. Redirect:', useRedirect);
     setLoading(true);
+    setLastAuthError(null);
     try {
       // Garantir persistência local antes do login
       await setPersistence(auth, browserLocalPersistence);
       
       const isInIframe = window.self !== window.top;
       
-      // No preview do AI Studio ou iframes, Popup costuma funcionar melhor se aberto em nova aba
-      // mas o Redirect é mais garantido para persistência se o domínio estiver certo.
-      if (useRedirect || isInIframe) {
-        console.log('📡 [AUTH_SCREEN] Usando Redirect');
+      // Forçar Redirect se estivermos no domínio customizado para evitar problemas de Cookie de 3p
+      const isCustomDomain = !window.location.hostname.includes('firebaseapp.com') && 
+                            !window.location.hostname.includes('web.app') && 
+                            !window.location.hostname.includes('localhost');
+
+      if (useRedirect || isInIframe || isCustomDomain) {
+        console.log('📡 [AUTH_SCREEN] Usando Redirect (Recomendado para ' + window.location.hostname + ')');
         await signInWithRedirect(auth, googleProvider);
         return;
       }
@@ -51,11 +57,10 @@ export default function AuthScreen() {
       toast.success('Login concluído!');
     } catch (error: any) {
       console.error('❌ [AUTH_SCREEN] Erro fatal no login:', error.code, error.message);
+      setLastAuthError({ code: error.code, message: error.message, domain: window.location.hostname });
       
-      if (error.code === 'auth/popup-blocked') {
-        toast.error('Popup bloqueado! Tente o botão de nova aba abaixo.');
-      } else if (error.code === 'auth/unauthorized-domain') {
-        toast.error('Domínio não autorizado no Firebase Console: ' + window.location.hostname);
+      if (error.code === 'auth/unauthorized-domain') {
+        toast.error('Este domínio NÃO está autorizado no Firebase Console!');
       } else {
         toast.error('Erro no login: ' + error.message);
       }
@@ -232,6 +237,24 @@ export default function AuthScreen() {
           </div>
 
           <div className="space-y-4 mb-8">
+            {lastAuthError && (
+              <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-2xl">
+                <div className="flex items-center gap-2 text-red-700 mb-2">
+                  <ShieldAlert className="w-4 h-4" />
+                  <span className="text-xs font-bold uppercase">Erro de Autenticação</span>
+                </div>
+                <p className="text-[10px] text-red-600 font-mono break-all leading-tight">
+                  Código: {lastAuthError.code}<br/>
+                  Domínio: {lastAuthError.domain}
+                </p>
+                {lastAuthError.code === 'auth/unauthorized-domain' && (
+                  <div className="mt-3 p-2 bg-white rounded-xl border border-red-100 italic text-[9px] text-red-500">
+                    Ação Necessária: Acesse o Firebase Console e adicione "{lastAuthError.domain}" em Authorized Domains.
+                  </div>
+                )}
+              </div>
+            )}
+
             {window.self !== window.top && (
               <div className="p-4 bg-amber-50 rounded-2xl border border-amber-100 flex flex-col gap-2 mb-4">
                 <div className="flex gap-3">
