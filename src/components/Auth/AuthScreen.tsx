@@ -5,7 +5,10 @@ import {
   sendPasswordResetEmail, 
   updateProfile, 
   signInWithPopup,
-  signInWithRedirect
+  signInWithRedirect,
+  getRedirectResult,
+  browserLocalPersistence,
+  setPersistence
 } from 'firebase/auth';
 import { doc, setDoc, getDoc, serverTimestamp, collection, query, where, getDocs, updateDoc, deleteDoc } from 'firebase/firestore';
 import { auth, db, googleProvider } from '../../firebase';
@@ -26,21 +29,33 @@ export default function AuthScreen() {
   const [isMasterSession] = useState(localStorage.getItem('isMasterSession') === 'true');
 
   const handleGoogleLogin = async (useRedirect = false) => {
+    console.log('🔴 [AUTH_SCREEN] Click Google. Redirect:', useRedirect);
     setLoading(true);
-    console.log('🔵 [AUTH_SCREEN] Iniciando login com Google...');
     try {
-      if (useRedirect) {
+      // Garantir persistência local antes do login
+      await setPersistence(auth, browserLocalPersistence);
+      
+      if (useRedirect || window.self !== window.top) {
+        console.log('📡 [AUTH_SCREEN] Usando Redirect (mais seguro para iframes)');
         await signInWithRedirect(auth, googleProvider);
         return;
       }
+      
+      console.log('📡 [AUTH_SCREEN] Usando Popup');
       const result = await signInWithPopup(auth, googleProvider);
-      console.log('✅ [AUTH_SCREEN] Login Firebase com sucesso para:', result.user.email);
-      toast.success('Login realizado com sucesso!');
+      console.log('✅ [AUTH_SCREEN] Popup concluído:', result.user.email);
+      toast.success('Login concluído!');
     } catch (error: any) {
-      console.error('❌ [AUTH_SCREEN] Erro fatal no login:', error);
-      toast.error('Erro ao entrar com Google');
+      console.error('❌ [AUTH_SCREEN] Erro fatal no login:', error.code, error.message);
+      
+      if (error.code === 'auth/popup-blocked' || error.code === 'auth/cancelled-popup-request') {
+        toast.info('Popup bloqueado. Tentando redirecionamento...');
+        await signInWithRedirect(auth, googleProvider);
+      } else {
+        toast.error('Erro ao entrar com Google: ' + error.message);
+      }
     } finally {
-      setLoading(false);
+      if (!useRedirect) setLoading(false);
     }
   };
 
@@ -239,7 +254,11 @@ export default function AuthScreen() {
               </div>
             ) : (
               <button 
-                onClick={handleGoogleLogin}
+                type="button"
+                onClick={() => {
+                  console.log('🔴 [AUTH_SCREEN] Botão Google Clicado!');
+                  handleGoogleLogin(false);
+                }}
                 disabled={loading}
                 className="w-full py-4 bg-white border border-slate-200 text-slate-700 font-bold rounded-2xl hover:bg-slate-50 transition-all flex items-center justify-center gap-3 shadow-sm disabled:opacity-50"
               >

@@ -40,6 +40,8 @@ export default function App() {
   const [userData, setUserData] = useState<any>(null);
   const [welcomeSettings, setWelcomeSettings] = useState<any>(null);
   const [isRoleLoading, setIsRoleLoading] = useState(true);
+  
+  console.log('💎 [APP] Renderizando. User:', user?.email || 'NULL', 'RoleLoading:', isRoleLoading);
   const [isBootstrapping, setIsBootstrapping] = useState(false);
   const [activeTab, setActiveTab] = useState(() => {
     return localStorage.getItem('isMasterSession') === 'true' ? 'super_admin' : 'dashboard';
@@ -153,6 +155,19 @@ export default function App() {
     let unsubscribeWelcome: (() => void) | null = null;
 
     console.log('📡 [APP] Registrando listener onAuthStateChanged...');
+    
+    // Capturar resultado de redirecionamento (caso o popup falhe)
+    getRedirectResult(auth).then((result) => {
+      if (result) {
+        console.log('📥 [AUTH] Resultado de redirecionamento capturado:', result.user.email);
+        setUser(result.user);
+      } else {
+        console.log('📥 [AUTH] Nenhum resultado de redirecionamento pendente.');
+      }
+    }).catch((err) => {
+      console.error('❌ [AUTH] Erro no getRedirectResult:', err.code, err.message);
+    });
+
     const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
       console.log('🔄 [AUTH] Evento onAuthStateChanged. Usuário:', user?.email || 'NULL');
       
@@ -222,7 +237,7 @@ export default function App() {
 
             const userRef = doc(db, 'organizations', currentOrgId, 'users', user.uid);
             unsubscribeUser = onSnapshot(userRef, (snap) => {
-              console.log('👤 [AUTH] Dados do usuário na org atualizados. Existe:', snap.exists());
+              console.log('👤 [AUTH] Snapshot Org User. Existe:', snap.exists(), 'Org:', currentOrgId);
               if (isPrimaryAdmin || masterSessionActive || isSuperAdminFromDB) {
                 setUserRole('admin');
                 setUserData({
@@ -237,8 +252,9 @@ export default function App() {
                 setUserRole(data.role);
                 setUserData(data);
               } else {
-                console.warn('⚠️ [AUTH] Usuário não encontrado dentro da org:', currentOrgId);
+                console.warn('⚠️ [AUTH] Usuário não vinculado na org:', currentOrgId);
                 setUserRole('agent');
+                setUserData({ uid: user.uid, email: currentEmail, role: 'agent' });
               }
               setIsRoleLoading(false);
             }, (err) => {
@@ -257,6 +273,9 @@ export default function App() {
             });
           } else {
             console.log('⚠️ [AUTH] Nenhuma organização vinculada ao usuário final.');
+            setUserRole('agent');
+            setUserData({ uid: user.uid, email: currentEmail, role: 'agent' });
+            setOrgId("");
             setIsRoleLoading(false);
           }
 
