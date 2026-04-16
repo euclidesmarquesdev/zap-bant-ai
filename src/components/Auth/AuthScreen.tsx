@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, updateProfile, signInWithPopup } from 'firebase/auth';
 import { doc, setDoc, getDoc, serverTimestamp, collection, query, where, getDocs, updateDoc, deleteDoc } from 'firebase/firestore';
 import { auth, db, googleProvider, adminEmail } from '../../firebase';
-import { Bot, Mail, Lock, User, ArrowRight, Loader2, Sparkles, Chrome } from 'lucide-react';
+import { Bot, Mail, Lock, User, ArrowRight, Loader2, Sparkles, Chrome, Shield } from 'lucide-react';
 import { motion } from 'motion/react';
 import { toast } from 'sonner';
 
@@ -99,15 +99,11 @@ export default function AuthScreen() {
         });
         const data = await res.json();
         if (data.success) {
-          // For Super Admin, we'll use a special flag in localStorage or just the email check in App.tsx
-          // Since the user asked for a back-end login, we'll simulate it by signing in with a known admin email
-          // or just setting a flag. But App.tsx relies on Firebase Auth.
-          // Let's use the primary admin email to sign in via Firebase if possible, 
-          // or just tell the user to use the Google Login with the correct email.
-          // Actually, the user wants a "user and password in the back".
-          // I'll use the hardcoded adminEmail to trigger the Super Admin view.
-          toast.success('Super Admin autenticado! Use o login Google com o e-mail mestre.');
+          localStorage.setItem('isMasterSession', 'true');
+          toast.success('Sessão Master Ativada! Agora entre com sua conta Google para assumir o controle global.');
           setMode('login');
+          // Force reload to pick up the new session state in App.tsx
+          setTimeout(() => window.location.reload(), 2000);
         } else {
           toast.error(data.error);
         }
@@ -224,42 +220,54 @@ export default function AuthScreen() {
           </div>
 
             {mode === 'superadmin' && (
-              <div className="space-y-5">
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-500 uppercase ml-1">Usuário Master</label>
-                  <input 
-                    type="text" 
-                    required
-                    value={superAdminUser}
-                    onChange={e => setSuperAdminUser(e.target.value)}
-                    className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
-                    placeholder="superadmin"
-                  />
+              <div className="space-y-6">
+                <div className="p-4 bg-slate-900 rounded-2xl border border-slate-800 space-y-2">
+                  <h3 className="text-white font-bold text-sm flex items-center gap-2">
+                    <Shield className="w-4 h-4 text-blue-400" />
+                    Painel de Controle Master
+                  </h3>
+                  <p className="text-[10px] text-slate-400 leading-relaxed">
+                    Acesso restrito para administradores globais do sistema.
+                  </p>
                 </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-500 uppercase ml-1">Senha Master</label>
-                  <input 
-                    type="password" 
-                    required
-                    value={superAdminPass}
-                    onChange={e => setSuperAdminPass(e.target.value)}
-                    className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
-                    placeholder="••••••••"
-                  />
+
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-slate-500 uppercase ml-1">E-mail Master</label>
+                    <input 
+                      type="email" 
+                      required
+                      value={superAdminUser}
+                      onChange={e => setSuperAdminUser(e.target.value)}
+                      className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10 transition-all font-mono"
+                      placeholder="superadmin@email.com"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-slate-500 uppercase ml-1">Senha Master</label>
+                    <input 
+                      type="password" 
+                      required
+                      value={superAdminPass}
+                      onChange={e => setSuperAdminPass(e.target.value)}
+                      className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10 transition-all"
+                      placeholder="••••••••"
+                    />
+                  </div>
+                  <button 
+                    type="submit"
+                    className="w-full py-4 bg-slate-900 text-white font-bold rounded-2xl hover:bg-black transition-all shadow-xl flex items-center justify-center gap-2"
+                  >
+                    Validar Credenciais Master
+                  </button>
+                  <button 
+                    type="button"
+                    onClick={() => setMode('login')}
+                    className="w-full text-xs text-slate-400 hover:text-slate-600 font-bold"
+                  >
+                    Voltar para Login Comum
+                  </button>
                 </div>
-                <button 
-                  type="submit"
-                  className="w-full py-4 bg-slate-900 text-white font-bold rounded-2xl hover:bg-black transition-all shadow-lg flex items-center justify-center gap-2"
-                >
-                  Acessar Painel Global
-                </button>
-                <button 
-                  type="button"
-                  onClick={() => setMode('login')}
-                  className="w-full text-xs text-slate-400 hover:text-slate-600 font-bold"
-                >
-                  Voltar para Login Comum
-                </button>
               </div>
             )}
 
@@ -362,12 +370,16 @@ export default function AuthScreen() {
             ) : null}
 
             {mode !== 'superadmin' && (
-              <button 
-                onClick={() => setMode('superadmin')}
-                className="text-[10px] font-bold text-slate-400 hover:text-slate-600 uppercase tracking-widest"
-              >
-                Acesso Super Admin
-              </button>
+              <div className="flex flex-col gap-4">
+                <button 
+                  onClick={() => setMode('superadmin')}
+                  className="group relative w-full py-3 bg-slate-50 border border-slate-200 rounded-2xl text-[10px] font-bold text-slate-400 hover:text-slate-900 hover:border-slate-900 transition-all flex items-center justify-center gap-2 overflow-hidden"
+                >
+                  <Shield className="w-3 h-3" />
+                  PAINEL DE CONTROLE MASTER
+                  <div className="absolute inset-0 bg-slate-900 translate-y-full group-hover:translate-y-0 transition-transform duration-300 -z-10" />
+                </button>
+              </div>
             )}
           </div>
         </div>

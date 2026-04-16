@@ -30,6 +30,7 @@ export default function App() {
   const [orgId, setOrgId] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<'admin' | 'agent' | null>(null);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [isMasterSession, setIsMasterSession] = useState(localStorage.getItem('isMasterSession') === 'true');
   const [orgStatus, setOrgStatus] = useState<'pending' | 'active' | 'inactive' | null>(null);
   const [userData, setUserData] = useState<any>(null);
   const [welcomeSettings, setWelcomeSettings] = useState<any>(null);
@@ -57,7 +58,7 @@ export default function App() {
 
         const currentEmail = user.email?.toLowerCase().trim() || '';
         const primaryAdminEmail = adminEmail.toLowerCase().trim();
-        const isPrimaryAdmin = currentEmail === primaryAdminEmail;
+        const isPrimaryAdmin = currentEmail === primaryAdminEmail || isMasterSession;
         setIsSuperAdmin(isPrimaryAdmin);
 
         if (isPrimaryAdmin && activeTab === 'dashboard') {

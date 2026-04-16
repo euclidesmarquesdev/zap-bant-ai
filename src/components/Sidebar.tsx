@@ -45,7 +45,7 @@ export default function Sidebar({ activeTab, setActiveTab, userPhone, userRole, 
               BANT Agent
             </span>
             <span className="text-[8px] font-bold text-slate-300 uppercase tracking-widest mt-1">
-              v2.5.0-SaaS
+              v2.5.1-SaaS
             </span>
           </div>
         </div>
