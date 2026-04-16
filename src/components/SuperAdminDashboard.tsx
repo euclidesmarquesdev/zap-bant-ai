@@ -28,12 +28,22 @@ export default function SuperAdminDashboard() {
   const [orgs, setOrgs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [filter, setFilter] = useState<'all' | 'active' | 'inactive'>('all');
+  const [filter, setFilter] = useState<'all' | 'active' | 'inactive' | 'pending'>('all');
 
   useEffect(() => {
-    const q = query(collection(db, 'organizations'), orderBy('createdAt', 'desc'));
+    console.log('📡 Buscando organizações...');
+    // Removendo orderBy temporariamente para garantir que orgs sem createdAt apareçam
+    const q = query(collection(db, 'organizations'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      setOrgs(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      const allOrgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      // Ordenação manual no cliente para evitar problemas de índice/campos ausentes
+      const sortedOrgs = allOrgs.sort((a: any, b: any) => {
+        const dateA = a.createdAt?.toMillis?.() || 0;
+        const dateB = b.createdAt?.toMillis?.() || 0;
+        return dateB - dateA;
+      });
+      console.log(`✅ ${sortedOrgs.length} organizações encontradas.`);
+      setOrgs(sortedOrgs);
       setLoading(false);
     }, (error) => {
       console.error('Erro no snapshot de organizações:', error);
@@ -68,7 +78,9 @@ export default function SuperAdminDashboard() {
     const matchesSearch = (org.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
                           (org.id || '').toLowerCase().includes(searchTerm.toLowerCase());
     const matchesFilter = filter === 'all' || 
-                         (filter === 'active' ? org.status === 'active' : org.status === 'inactive');
+                         (filter === 'active' ? org.status === 'active' : 
+                          filter === 'pending' ? org.status === 'pending' : 
+                          org.status === 'inactive');
     return matchesSearch && matchesFilter;
   });
 
@@ -110,7 +122,7 @@ export default function SuperAdminDashboard() {
             />
           </div>
           <div className="flex bg-white p-1 rounded-xl border border-slate-200 shadow-sm">
-            {(['all', 'active', 'inactive'] as const).map((f) => (
+            {(['all', 'active', 'pending', 'inactive'] as const).map((f) => (
               <button
                 key={f}
                 onClick={() => setFilter(f)}
@@ -118,7 +130,7 @@ export default function SuperAdminDashboard() {
                   filter === f ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'
                 }`}
               >
-                {f === 'all' ? 'Todas' : f === 'active' ? 'Ativas' : 'Inativas'}
+                {f === 'all' ? 'Todas' : f === 'active' ? 'Ativas' : f === 'pending' ? 'Pendentes' : 'Inativas'}
               </button>
             ))}
           </div>

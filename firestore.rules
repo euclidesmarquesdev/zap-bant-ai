@@ -66,9 +66,13 @@ service cloud.firestore {
       match /users/{userId} {
         allow read: if isOrgMember(orgId);
         allow write: if isOrgAdmin(orgId) || isSuperAdmin() ||
-                      (isOwner(userId) && 
-                       exists(/databases/$(database)/documents/users/$(userId)) &&
-                       get(/databases/$(database)/documents/users/$(userId)).data.orgId == orgId);
+                      (isOwner(userId) && (
+                        // Permite que o próprio usuário se registre como agente ao entrar via link
+                        (request.resource.data.role == 'agent' && request.resource.data.orgId == orgId) ||
+                        // Ou se ele já tiver o vínculo global (regra antiga mantida por segurança)
+                        (exists(/databases/$(database)/documents/users/$(userId)) &&
+                         get(/databases/$(database)/documents/users/$(userId)).data.orgId == orgId)
+                      ));
       }
 
       // Leads within Org

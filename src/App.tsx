@@ -47,6 +47,60 @@ export default function App() {
   const [processedMessages] = useState(new Set<string>());
   const { qrCode, isReady, userPhone, lastMessage, sendAIResponse, disconnect, setTyping, joinOrg } = useWhatsApp();
 
+  // 🚀 Efeito para capturar convites via URL
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const invitedOrgId = urlParams.get('org');
+    
+    if (user && invitedOrgId) {
+      console.log('🔗 Convite detectado na URL:', invitedOrgId);
+      handleInvitation(user, invitedOrgId);
+    }
+  }, [user, window.location.search]);
+
+  const handleInvitation = async (currentUser: User, invitedOrgId: string) => {
+    try {
+      const currentEmail = currentUser.email?.toLowerCase().trim() || '';
+      const userGlobalRef = doc(db, 'users', currentUser.uid);
+      const userGlobalSnap = await getDoc(userGlobalRef);
+      const currentStoredOrgId = userGlobalSnap.exists() ? userGlobalSnap.data().orgId : null;
+
+      if (invitedOrgId !== currentStoredOrgId) {
+        console.log('📝 Registrando novo vínculo de organização:', invitedOrgId);
+        
+        // 1. Registro Global
+        await setDoc(userGlobalRef, {
+          uid: currentUser.uid,
+          email: currentEmail,
+          orgId: invitedOrgId,
+          role: 'agent',
+          updatedAt: serverTimestamp()
+        }, { merge: true });
+
+        // 2. Registro na Organização
+        await setDoc(doc(db, 'organizations', invitedOrgId, 'users', currentUser.uid), {
+          uid: currentUser.uid,
+          orgId: invitedOrgId,
+          email: currentEmail,
+          displayName: currentUser.displayName || 'Atendente',
+          role: 'agent',
+          active: true,
+          createdAt: serverTimestamp()
+        }, { merge: true });
+
+        setOrgId(invitedOrgId);
+        toast.success('Você entrou na organização com sucesso!');
+      }
+      
+      // Limpa a URL sem recarregar a página
+      const newUrl = window.location.pathname;
+      window.history.replaceState({}, document.title, newUrl);
+    } catch (error) {
+      console.error('❌ Erro ao processar convite:', error);
+      toast.error('Erro ao entrar na organização.');
+    }
+  };
+
   useEffect(() => {
     if (!isValidConfig || !auth) return;
 
@@ -78,15 +132,22 @@ export default function App() {
         const isPrimaryAdmin = currentEmail === primaryAdminEmail || isMasterSession;
         setIsSuperAdmin(isPrimaryAdmin);
         
-        console.log('Auth Status:', { email: currentEmail, isPrimaryAdmin, isMasterSession });
+        console.log('🔐 Estado de Autenticação:', { 
+          email: currentEmail, 
+          isPrimaryAdmin, 
+          isMasterSession,
+          uid: user.uid 
+        });
 
         // 🚀 Bootstrap Idempotente de Hierarquia
         if (isPrimaryAdmin) {
           try {
+            console.log('⚡ Iniciando bootstrap para Super Admin...');
             setIsBootstrapping(true);
             await bootstrapDatabase(user, isMasterSession);
+            console.log('✅ Bootstrap finalizado.');
           } catch (err) {
-            console.error('Erro no bootstrap:', err);
+            console.error('❌ Erro no bootstrap:', err);
           } finally {
             setIsBootstrapping(false);
             setActiveTab('super_admin');
@@ -101,32 +162,7 @@ export default function App() {
 
         if (userGlobalSnap.exists()) {
           currentOrgId = userGlobalSnap.data().orgId;
-        }
-
-        // Handle Invitation Link
-        if (invitedOrgId && invitedOrgId !== currentOrgId) {
-          currentOrgId = invitedOrgId;
-          await setDoc(userGlobalRef, {
-            uid: user.uid,
-            email: currentEmail,
-            orgId: invitedOrgId,
-            role: 'agent',
-            updatedAt: serverTimestamp()
-          }, { merge: true });
-
-          // Add to Org's users
-          await setDoc(doc(db, 'organizations', invitedOrgId, 'users', user.uid), {
-            uid: user.uid,
-            orgId: invitedOrgId,
-            email: currentEmail,
-            displayName: user.displayName || 'Atendente',
-            role: 'agent',
-            active: true,
-            createdAt: serverTimestamp()
-          }, { merge: true });
-          
-          // Clear URL param
-          window.history.replaceState({}, document.title, window.location.pathname);
+          console.log('📂 Organização atual do usuário:', currentOrgId);
         }
 
         // If primary admin, ensure they have the master-org and admin role
@@ -137,6 +173,7 @@ export default function App() {
         if (currentOrgId) {
           setOrgId(currentOrgId);
           joinOrg(currentOrgId); // Join socket room
+          console.log('📡 Conectando à organização:', currentOrgId);
 
           // Fetch Org Status
           const orgRef = doc(db, 'organizations', currentOrgId);
