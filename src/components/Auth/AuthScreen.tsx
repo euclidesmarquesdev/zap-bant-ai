@@ -26,93 +26,19 @@ export default function AuthScreen() {
   const [isMasterSession] = useState(localStorage.getItem('isMasterSession') === 'true');
 
   const handleGoogleLogin = async (useRedirect = false) => {
-    const isInIframe = window.self !== window.top;
-    
-    if (isInIframe && !useRedirect) {
-      toast.info('Dica: Se o login falhar, tente o botão de redirecionamento abaixo ou abra em nova aba.', {
-        duration: 5000
-      });
-    }
-
     setLoading(true);
+    console.log('🔵 [AUTH_SCREEN] Iniciando login com Google...');
     try {
       if (useRedirect) {
         await signInWithRedirect(auth, googleProvider);
         return;
       }
-      const { user } = await signInWithPopup(auth, googleProvider);
-      const currentEmail = user.email?.toLowerCase().trim();
-      const isMasterSession = localStorage.getItem('isMasterSession') === 'true';
-
-      // Master session doesn't need to check for invited status
-      if (isMasterSession) {
-        toast.success('Login master realizado com sucesso!');
-        setLoading(false);
-        return;
-      }
-
-      // Check for invited user doc or create new
-      const usersRef = collection(db, 'users');
-      const q = query(usersRef, where('email', '==', currentEmail));
-      
-      try {
-        const querySnap = await getDocs(q);
-        const masterSessionActive = localStorage.getItem('isMasterSession') === 'true';
-        console.log('🔍 Check invited user:', currentEmail, '| Master:', masterSessionActive, '| Found:', !querySnap.empty);
-        
-        if (!querySnap.empty) {
-          // Merge with invited doc
-          const invitedDoc = querySnap.docs[0];
-          const data = invitedDoc.data();
-          console.log('📥 Found invite:', data);
-          
-          await setDoc(doc(db, 'users', user.uid), {
-            ...data,
-            uid: user.uid,
-            displayName: user.displayName,
-            invited: false,
-            updatedAt: serverTimestamp()
-          });
-          
-          if (invitedDoc.id !== user.uid) {
-            await deleteDoc(doc(db, 'users', invitedDoc.id));
-          }
-        } else {
-          const userRef = doc(db, 'users', user.uid);
-          const userSnap = await getDoc(userRef);
-          
-          console.log('👤 Checking global user doc:', user.uid, '| Exists:', userSnap.exists());
-          
-          if (!userSnap.exists()) {
-            const role = 'agent';
-            await setDoc(userRef, {
-              uid: user.uid,
-              email: currentEmail,
-              displayName: user.displayName,
-              role: role,
-              active: true,
-              createdAt: serverTimestamp()
-            });
-            console.log('✨ Created default agent doc');
-          }
-        }
-      } catch (dbError) {
-        console.error('❌ Database error during login:', dbError);
-        const masterSessionActive = localStorage.getItem('isMasterSession') === 'true';
-        if (!masterSessionActive) {
-          throw dbError;
-        }
-      }
+      const result = await signInWithPopup(auth, googleProvider);
+      console.log('✅ [AUTH_SCREEN] Login Firebase com sucesso para:', result.user.email);
       toast.success('Login realizado com sucesso!');
     } catch (error: any) {
-      console.error('Google login error:', error);
-      if (error.code === 'auth/popup-blocked') {
-        toast.error('O popup de login foi bloqueado pelo navegador.');
-      } else if (error.code === 'auth/unauthorized-domain') {
-        toast.error('Este domínio não está autorizado no Firebase Console.');
-      } else {
-        toast.error('Erro ao entrar com Google: ' + (error.message || 'Erro desconhecido'));
-      }
+      console.error('❌ [AUTH_SCREEN] Erro fatal no login:', error);
+      toast.error('Erro ao entrar com Google');
     } finally {
       setLoading(false);
     }

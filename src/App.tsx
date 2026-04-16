@@ -179,12 +179,19 @@ export default function App() {
             const snap = await getDoc(userGlobalRef);
             if (snap.exists()) {
               userGlobalData = snap.data();
-              console.log('✅ [AUTH] Doc global users/' + user.uid + ' encontrado:', userGlobalData);
+              console.log('✅ [AUTH] Doc global encontrado:', userGlobalData);
             } else {
-              console.log('⚠️ [AUTH] Doc global users/' + user.uid + ' não existe.');
+              console.log('⚠️ [AUTH] Doc global ausente. Criando perfil padrão...');
+              userGlobalData = {
+                uid: user.uid,
+                email: currentEmail,
+                role: 'agent',
+                updatedAt: serverTimestamp()
+              };
+              await setDoc(userGlobalRef, userGlobalData);
             }
           } catch (e: any) {
-            console.error('❌ [AUTH] Falha ao ler users/' + user.uid + ':', e.message);
+            console.error('❌ [AUTH] Erro ao acessar users/' + user.uid + ':', e.message);
           }
           
           let currentOrgId = userGlobalData?.orgId || '';
