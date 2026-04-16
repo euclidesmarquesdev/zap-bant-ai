@@ -323,20 +323,26 @@ async function startServer() {
     });
 
     socket.on('ai:response', async ({ orgId, to, message }) => {
+      console.log(`🤖 [SOCKET] ai:response recebido para Org: ${orgId}, To: ${to}`);
       const session = sessions.get(orgId);
-      if (!session || !session.isReady) return;
+      if (!session || !session.isReady) {
+        console.warn(`⚠️ [SOCKET] Sessão não pronta para Org: ${orgId}`);
+        return;
+      }
       
       try {
         let targetJid = to.includes('@') ? to : `${to}@s.whatsapp.net`;
+        console.log(`📡 [SOCKET] Enviando mensagem para JID: ${targetJid}`);
         // Send typing off before sending message
         await session.sock.sendPresenceUpdate('paused', targetJid);
         await session.sock.sendMessage(targetJid, { text: message });
       } catch (error: any) {
-        console.error(`Error sending AI response [${orgId}]:`, error.message);
+        console.error(`❌ [SOCKET] Erro ao enviar resposta AI [${orgId}]:`, error.message);
       }
     });
 
     socket.on('whatsapp:typing', async ({ orgId, to, status }) => {
+      console.log(`✍️ [SOCKET] whatsapp:typing recebido para Org: ${orgId}, Status: ${status}`);
       const session = sessions.get(orgId);
       if (!session || !session.isReady) return;
 
@@ -344,7 +350,7 @@ async function startServer() {
         let targetJid = to.includes('@') ? to : `${to}@s.whatsapp.net`;
         await session.sock.sendPresenceUpdate(status || 'composing', targetJid);
       } catch (error: any) {
-        console.error(`Error sending typing status [${orgId}]:`, error.message);
+        console.error(`❌ [SOCKET] Erro ao enviar status de digitação [${orgId}]:`, error.message);
       }
     });
 

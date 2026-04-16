@@ -354,6 +354,7 @@ export default function App() {
     if (msg.key) markAsRead([msg.key]);
 
     const leadId = msg.from;
+    const targetChatId = msg.chatId || msg.from; // Usar JID completo se disponível
     const leadRef = doc(db, 'organizations', orgId, 'leads', leadId);
     const leadSnap = await getDoc(leadRef);
 
@@ -362,6 +363,10 @@ export default function App() {
 
     if (leadSnap.exists()) {
       currentLeadData = leadSnap.data();
+      // Atualizar chatId se necessário para leads antigos
+      if (!currentLeadData.chatId && targetChatId.includes('@')) {
+        await updateDoc(leadRef, { chatId: targetChatId });
+      }
       const messagesRef = collection(db, 'organizations', orgId, 'leads', leadId, 'messages');
       const q = query(messagesRef, orderBy('timestamp', 'desc'), limit(10));
       const querySnapshot = await getDocs(q);
@@ -374,6 +379,7 @@ export default function App() {
         id: leadId,
         orgId,
         phone: msg.from,
+        chatId: targetChatId, // Guardar o JID no Lead
         name: msg.pushName || 'Cliente',
         status: 'novo',
         score: 0,
@@ -386,11 +392,7 @@ export default function App() {
       if (welcomeSettings) {
         const welcome = welcomeSettings;
         if (welcome.text || (welcome.mediaUrl && welcome.mediaType !== 'none')) {
-          await fetch('/api/whatsapp/send', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ orgId, to: leadId, message: welcome.text })
-          });
+          sendAIResponse(targetChatId, welcome.text); // Usar JID completo
           await addDoc(collection(db, 'organizations', orgId, 'leads', leadId, 'messages'), {
             text: welcome.text || `[Mídia]`,
             sender: 'ai',
@@ -409,7 +411,7 @@ export default function App() {
     });
 
     try {
-      setTyping(leadId, 'composing');
+      setTyping(targetChatId, 'composing');
       console.log('🧠 [APP] Chamando Gemini para resposta...');
       const result = await processMessage(msg.body, history, trainingData.agentMd, trainingData.shopMd, currentLeadData, userData?.geminiApiKey);
       console.log('✅ [APP] Resposta Gemini gerada.');
@@ -429,7 +431,7 @@ export default function App() {
         orgId
       });
 
-      sendAIResponse(leadId, result.response);
+      sendAIResponse(targetChatId, result.response); // Usar JID completo
     } catch (error) {
       console.error('Gemini Error:', error);
     }
